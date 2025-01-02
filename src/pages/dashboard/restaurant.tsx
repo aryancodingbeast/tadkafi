@@ -1,168 +1,201 @@
-import { useState } from 'react';
-import { supplierService } from '@/services/suppliers';
-import { productService } from '@/services/products';
-import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
+import { useState, useEffect } from 'react';
+import { useSupabase } from '@/lib/supabase-context';
 import { SupplierCard } from '@/components/dashboard/supplier-card';
-import { ProductCard } from '@/components/dashboard/product-card';
-import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Package2, Search, X } from 'lucide-react';
 import type { Database } from '@/lib/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
-type Product = Database['public']['Tables']['products']['Row'];
 
 export function RestaurantDashboard() {
-  const [selectedSupplier, setSelectedSupplier] = useState<Profile | null>(null);
-  const [cart, setCart] = useState<Array<{ product: Product; quantity: number }>>([]);
-
-  const { data: suppliers, loading: suppliersLoading, error: suppliersError } = 
-    useSupabaseQuery(supplierService.getSuppliers);
-
-  const { data: products, loading: productsLoading, error: productsError } = 
-    useSupabaseQuery(
-      selectedSupplier ? () => productService.getSupplierProducts(selectedSupplier.id) : null,
-      [selectedSupplier?.id]
-    );
-
-  console.log('Restaurant Dashboard State:', {
-    suppliers,
-    suppliersLoading,
-    suppliersError,
-    selectedSupplier,
-    products,
-    productsLoading,
-    productsError,
-    cartLength: cart.length
+  const [suppliers, setSuppliers] = useState<Profile[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalSuppliers: 0,
+    totalProducts: 0,
+    totalOrders: 0
   });
+  const { supabase } = useSupabase();
 
-  const addToCart = (product: Product) => {
-    setCart(current => {
-      const existing = current.find(item => item.product.id === product.id);
-      if (existing) {
-        return current.map(item =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      }
-      return [...current, { product, quantity: 1 }];
-    });
-  };
+  useEffect(() => {
+    fetchSuppliers();
+    fetchStats();
+  }, []);
 
-  const placeOrder = async () => {
-    if (cart.length === 0) return;
-
-    const firstItem = cart[0];
-    const supplierId = firstItem.product.supplier_id;
-    
-    const totalAmount = cart.reduce(
-      (sum, item) => sum + item.product.price * item.quantity,
-      0
-    );
-
+  const fetchSuppliers = async () => {
     try {
-      await orderService.createOrder(
-        {
-          supplier_id: supplierId,
-          total_amount: totalAmount,
-        },
-        cart.map(item => ({
-          product_id: item.product.id,
-          quantity: item.quantity,
-          unit_price: item.product.price,
-          total_price: item.product.price * item.quantity,
-        }))
-      );
+      console.log('Fetching suppliers...');
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('type', 'supplier');
 
-      setCart([]);
-      setSelectedSupplier(null);
+      if (error) {
+        console.error('Error fetching suppliers:', error);
+        throw error;
+      }
+
+      console.log('Fetched suppliers:', data);
+      setSuppliers(data || []);
     } catch (error) {
-      console.error('Error placing order:', error);
+      console.error('Error in fetchSuppliers:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (suppliersLoading) {
-    return <div className="container mx-auto px-4 py-8">Loading suppliers...</div>;
-  }
+  const fetchStats = async () => {
+    try {
+      // Count total suppliers
+      const { data: suppliers, count: suppliersCount, error: suppliersError } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact' })
+        .eq('type', 'supplier');
 
-  if (suppliersError) {
-    return <div className="container mx-auto px-4 py-8 text-red-600">Error loading suppliers: {suppliersError.message}</div>;
-  }
+      if (suppliersError) throw suppliersError;
 
-  if (!suppliers || suppliers.length === 0) {
-    return <div className="container mx-auto px-4 py-8">No suppliers available.</div>;
-  }
+      // Count total available products
+      const { data: products, error: productsError } = await supabase
+        .from('products')
+        .select('id, name, supplier_id, stock_quantity')
+        .gt('stock_quantity', 0);
+
+      if (productsError) throw productsError;
+
+      console.log('Products with stock:', products?.map(p => ({
+        id: p.id,
+        name: p.name,
+        supplier_id: p.supplier_id,
+        stock: p.stock_quantity
+      })));
+
+      // Count total orders for this restaurant
+      const { count: ordersCount, error: ordersError } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact' });
+
+      if (ordersError) throw ordersError;
+
+      setStats({
+        totalSuppliers: suppliersCount || 0,
+        totalProducts: products?.length || 0,
+        totalOrders: ordersCount || 0
+      });
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      setStats({
+        totalSuppliers: 0,
+        totalProducts: 0,
+        totalOrders: 0
+      });
+    }
+  };
+
+  const filteredSuppliers = suppliers.filter(supplier =>
+    supplier.business_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    supplier.address?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {!selectedSupplier ? (
-        <>
-          <h2 className="text-2xl font-bold mb-6">Available Suppliers</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {suppliers.map(supplier => (
-              <SupplierCard
-                key={supplier.id}
-                supplier={supplier}
-                onViewProducts={() => setSelectedSupplier(supplier)}
-              />
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Products from {selectedSupplier.business_name}</h2>
-            <Button variant="outline" onClick={() => setSelectedSupplier(null)}>
-              Back to Suppliers
-            </Button>
-          </div>
-          
-          {productsLoading && (
-            <div className="flex items-center justify-center p-8">
-              <div className="text-lg">Loading products...</div>
-            </div>
-          )}
-          
-          {productsError && (
-            <div className="text-red-600 p-8">
-              Error loading products: {productsError.message}
-            </div>
-          )}
-
-          {!productsLoading && !productsError && (
-            <>
-              {products && products.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {products.map(product => (
-                    <ProductCard
-                      key={product.id}
-                      product={product}
-                      onAddToCart={addToCart}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center p-8">
-                  <div className="text-lg">No products available from this supplier.</div>
-                </div>
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg p-4">
-          <div className="container mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* Header Section */}
+        <div className="bg-white rounded-2xl p-8 shadow-sm">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <span className="font-semibold">{cart.length} items in cart</span>
-              <span className="ml-4">
-                Total: ${cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toFixed(2)}
-              </span>
+              <h1 className="text-2xl font-bold text-gray-900">Restaurant Dashboard</h1>
+              <p className="text-gray-600 mt-1">Browse suppliers and manage your orders</p>
             </div>
-            <Button onClick={placeOrder}>Place Order</Button>
           </div>
         </div>
-      )}
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="bg-blue-100 p-3 rounded-xl">
+                <Package2 className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Suppliers</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalSuppliers}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="bg-green-100 p-3 rounded-xl">
+                <Package2 className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Available Products</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-4">
+              <div className="bg-purple-100 p-3 rounded-xl">
+                <Package2 className="h-6 w-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-600">Your Orders</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Suppliers Section */}
+        <div className="bg-white rounded-2xl p-8 shadow-sm">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <h2 className="text-xl font-semibold text-gray-900">Available Suppliers</h2>
+            <div className="relative flex-1 md:flex-none">
+              <Input
+                type="text"
+                placeholder="Search suppliers..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-10 py-2 w-full md:w-72"
+              />
+              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center items-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+          ) : filteredSuppliers.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredSuppliers.map((supplier) => (
+                <SupplierCard key={supplier.id} supplier={supplier} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Package2 className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-4 text-lg font-medium text-gray-900">No suppliers found</h3>
+              <p className="mt-2 text-gray-600">
+                {searchQuery
+                  ? "We couldn't find any suppliers matching your criteria."
+                  : "No suppliers are currently available."}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

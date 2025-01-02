@@ -7,6 +7,8 @@ import { LoginPage } from './pages/auth/login';
 import { RegisterPage } from './pages/auth/register';
 import { RestaurantDashboard } from './pages/dashboard/restaurant';
 import { SupplierDashboard } from './pages/dashboard/supplier';
+import { SupplierProductsPage } from './pages/supplier/products';
+import { SupabaseProvider } from './lib/supabase-context';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -44,23 +46,33 @@ export default function App() {
   }, [loadUser]);
 
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-50">
-        <Navbar />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardRoute />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </div>
-    </Router>
+    <SupabaseProvider>
+      <Router>
+        <div className="min-h-screen bg-gray-50">
+          <Navbar />
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardRoute />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/supplier/:supplierId"
+              element={
+                <ProtectedRoute>
+                  <SupplierProductsPage />
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </div>
+      </Router>
+    </SupabaseProvider>
   );
 }
