@@ -18,7 +18,7 @@ export function RestaurantDashboard() {
 
   const { data: products, loading: productsLoading, error: productsError } = 
     useSupabaseQuery(
-      () => selectedSupplier ? productService.getSupplierProducts(selectedSupplier.id) : null,
+      selectedSupplier ? () => productService.getSupplierProducts(selectedSupplier.id) : null,
       [selectedSupplier?.id]
     );
 
@@ -115,24 +115,36 @@ export function RestaurantDashboard() {
             </Button>
           </div>
           
-          {productsLoading && <div>Loading products...</div>}
+          {productsLoading && (
+            <div className="flex items-center justify-center p-8">
+              <div className="text-lg">Loading products...</div>
+            </div>
+          )}
           
           {productsError && (
-            <div className="text-red-600">Error loading products: {productsError.message}</div>
+            <div className="text-red-600 p-8">
+              Error loading products: {productsError.message}
+            </div>
           )}
 
-          {products && products.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map(product => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onAddToCart={addToCart}
-                />
-              ))}
-            </div>
-          ) : (
-            <div>No products available from this supplier.</div>
+          {!productsLoading && !productsError && (
+            <>
+              {products && products.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {products.map(product => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onAddToCart={addToCart}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-8">
+                  <div className="text-lg">No products available from this supplier.</div>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

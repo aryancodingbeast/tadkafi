@@ -2,17 +2,26 @@ import { useEffect, useState } from 'react';
 import { PostgrestError } from '@supabase/supabase-js';
 
 export function useSupabaseQuery<T>(
-  queryFn: () => Promise<T>,
+  queryFn: (() => Promise<T>) | null,
   deps: any[] = []
 ) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<PostgrestError | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     const fetchData = async () => {
+      if (!queryFn) {
+        if (isMounted) {
+          setData(null);
+          setError(null);
+          setLoading(false);
+        }
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
