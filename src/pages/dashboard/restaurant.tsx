@@ -4,6 +4,7 @@ import { productService } from '@/services/products';
 import { useSupabaseQuery } from '@/hooks/useSupabaseQuery';
 import { SupplierCard } from '@/components/dashboard/supplier-card';
 import { ProductCard } from '@/components/dashboard/product-card';
+import { Button } from '@/components/ui/button';
 import type { Database } from '@/lib/database.types';
 
 type Profile = Database['public']['Tables']['profiles']['Row'];
