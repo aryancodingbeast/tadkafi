@@ -21,16 +21,42 @@ A web application for managing restaurant supply chains, built with React, TypeS
 ## Setup
 
 1. Clone the repository
-2. Install dependencies:
+2. Remove the existing node_modules and package-lock.json if they exist:
+   ```bash
+   rm -rf node_modules package-lock.json
+   ```
+3. Install dependencies with a clean npm install:
    ```bash
    npm install
    ```
-3. Create a `.env` file with your Supabase credentials:
+4. Create a `.env` file with your Supabase credentials:
    ```env
    VITE_SUPABASE_URL=your_supabase_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
    ```
-4. Run the development server:
+5. Run the development server:
+   ```bash
+   npm run dev
+   ```
+
+## Common Issues
+
+If you encounter the error `import createLucideIcon from "/node_modules/lucide-react/dist/esm/createLucideIcon.js"`, try these steps:
+
+1. Delete node_modules and package-lock.json
+2. Clear npm cache:
+   ```bash
+   npm cache clean --force
+   ```
+3. Reinstall dependencies:
+   ```bash
+   npm install
+   ```
+4. Rebuild the project:
+   ```bash
+   npm run build
+   ```
+5. Start the development server:
    ```bash
    npm run dev
    ```
