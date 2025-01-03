@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useSupabase } from '@/lib/supabase-context';
-import { ProductCard } from '@/components/dashboard/product-card';
+import { ProductCard } from '@/components/product-card';
 import { Input } from '@/components/ui/input';
 import { ShoppingBag, Search, X } from 'lucide-react';
 import type { Product } from '@/lib/database.types';

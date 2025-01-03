@@ -51,6 +51,7 @@ export type Database = {
           unit: string
           stock_quantity: number
           category: string | null
+          image_url: string | null
           created_at: string
           updated_at: string
         }
@@ -63,6 +64,7 @@ export type Database = {
           unit: string
           stock_quantity?: number
           category?: string | null
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -75,6 +77,7 @@ export type Database = {
           unit?: string
           stock_quantity?: number
           category?: string | null
+          image_url?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -140,3 +143,7 @@ export type Database = {
     }
   }
 }
+
+export type Product = Database['public']['Tables']['products']['Row']
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type Order = Database['public']['Tables']['orders']['Row']

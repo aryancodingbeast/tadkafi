@@ -1,242 +1,146 @@
-import { createContext, useContext, useEffect, useState } from 'react'
-import { useSupabase } from './supabase-context'
-import { toast } from 'sonner'
+import { createContext, useContext, useState, useCallback } from 'react';
+import { useSupabase } from './supabase-context';
+import { useAuthStore } from '@/store/auth';
+import { toast } from 'sonner';
 
 interface CartItem {
-  id: string
-  product_id: string
-  quantity: number
-  product: {
-    name: string
-    price: number
-    image_url: string
-  }
+  id: string;
+  quantity: number;
+  name: string;
+  price: number;
+  image_url: string;
+  supplier_id: string;
 }
 
 interface CartContextType {
-  cartItems: CartItem[]
-  addToCart: (productId: string) => Promise<void>
-  updateQuantity: (itemId: string, quantity: number) => Promise<void>
-  removeFromCart: (itemId: string) => Promise<void>
-  clearCart: () => Promise<void>
-  isLoading: boolean
-  createOrder: (shippingAddress: any) => Promise<string>
+  items: CartItem[];
+  addToCart: (productId: string, quantity: number) => Promise<void>;
+  removeFromCart: (productId: string) => void;
+  clearCart: () => void;
+  updateQuantity: (productId: string, quantity: number) => void;
+  isLoading: boolean;
+  total: number;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined)
+const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const { supabase, user } = useSupabase()
-  const [cartItems, setCartItems] = useState<CartItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const { supabase } = useSupabase();
+  const { user } = useAuthStore();
 
-  useEffect(() => {
-    if (user) {
-      fetchCartItems()
-    } else {
-      setCartItems([])
-      setIsLoading(false)
-    }
-  }, [user])
-
-  const fetchCartItems = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('cart_items')
-        .select(`
-          id,
-          product_id,
-          quantity,
-          products (
-            name,
-            price,
-            image_url
-          )
-        `)
-        .eq('user_id', user?.id)
-
-      if (error) throw error
-
-      setCartItems(data || [])
-    } catch (error) {
-      console.error('Error fetching cart:', error)
-      toast.error('Failed to load cart items')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const addToCart = async (productId: string) => {
+  const addToCart = useCallback(async (productId: string, quantity: number) => {
     if (!user) {
-      toast.error('Please sign in to add items to cart')
-      return
+      toast.error('Please sign in to add items to cart');
+      return;
     }
 
+    setIsLoading(true);
     try {
-      setIsLoading(true)
-      
-      // Check if item already exists in cart
-      const existingItem = cartItems.find(item => item.product_id === productId)
-      
-      if (existingItem) {
-        // Update quantity if item exists
-        await updateQuantity(existingItem.id, existingItem.quantity + 1)
-      } else {
-        // Add new item if it doesn't exist
-        const { error } = await supabase
-          .from('cart_items')
-          .insert({
-            user_id: user.id,
-            product_id: productId,
-            quantity: 1
-          })
+      const { data: product, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', productId)
+        .single();
 
-        if (error) throw error
-        
-        await fetchCartItems()
+      if (error) throw error;
+
+      if (!product) {
+        toast.error('Product not found');
+        return;
       }
-      
-      toast.success('Added to cart')
+
+      if (product.stock_quantity < quantity) {
+        toast.error('Not enough stock available');
+        return;
+      }
+
+      // Check if item from same supplier exists
+      const existingItem = items.find((item) => item.supplier_id === product.supplier_id);
+      if (existingItem && existingItem.id !== productId) {
+        const confirm = window.confirm(
+          'You can only order from one supplier at a time. Would you like to clear your cart and add this item?'
+        );
+        if (confirm) {
+          setItems([]);
+        } else {
+          return;
+        }
+      }
+
+      // Check if item already exists
+      const itemExists = items.find((item) => item.id === productId);
+      if (itemExists) {
+        setItems(
+          items.map((item) =>
+            item.id === productId
+              ? { ...item, quantity: item.quantity + quantity }
+              : item
+          )
+        );
+      } else {
+        setItems([
+          ...items,
+          {
+            id: product.id,
+            quantity,
+            name: product.name,
+            price: product.price,
+            image_url: product.image_url,
+            supplier_id: product.supplier_id,
+          },
+        ]);
+      }
+
+      toast.success('Added to cart');
     } catch (error) {
-      console.error('Error adding to cart:', error)
-      toast.error('Failed to add item to cart')
+      console.error('Error adding to cart:', error);
+      toast.error('Failed to add to cart');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  }, [items, supabase, user]);
 
-  const updateQuantity = async (itemId: string, quantity: number) => {
-    if (quantity < 1) {
-      await removeFromCart(itemId)
-      return
-    }
+  const removeFromCart = useCallback((productId: string) => {
+    setItems(items.filter((item) => item.id !== productId));
+  }, [items]);
 
-    try {
-      setIsLoading(true)
-      const { error } = await supabase
-        .from('cart_items')
-        .update({ quantity })
-        .eq('id', itemId)
+  const updateQuantity = useCallback((productId: string, quantity: number) => {
+    setItems(
+      items.map((item) =>
+        item.id === productId ? { ...item, quantity } : item
+      )
+    );
+  }, [items]);
 
-      if (error) throw error
+  const clearCart = useCallback(() => {
+    setItems([]);
+  }, []);
 
-      await fetchCartItems()
-    } catch (error) {
-      console.error('Error updating quantity:', error)
-      toast.error('Failed to update quantity')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const removeFromCart = async (itemId: string) => {
-    try {
-      setIsLoading(true)
-      const { error } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('id', itemId)
-
-      if (error) throw error
-
-      await fetchCartItems()
-      toast.success('Item removed from cart')
-    } catch (error) {
-      console.error('Error removing item:', error)
-      toast.error('Failed to remove item')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const clearCart = async () => {
-    try {
-      setIsLoading(true)
-      const { error } = await supabase
-        .from('cart_items')
-        .delete()
-        .eq('user_id', user?.id)
-
-      if (error) throw error
-
-      setCartItems([])
-      toast.success('Cart cleared')
-    } catch (error) {
-      console.error('Error clearing cart:', error)
-      toast.error('Failed to clear cart')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const createOrder = async (shippingAddress: any) => {
-    if (!user || cartItems.length === 0) {
-      throw new Error('Cannot create order: Cart is empty or user is not logged in')
-    }
-
-    try {
-      setIsLoading(true)
-
-      // Start a transaction by creating the order first
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user.id,
-          shipping_address: shippingAddress,
-          status: 'pending'
-        })
-        .select()
-        .single()
-
-      if (orderError) throw orderError
-
-      // Create order items from cart items
-      const orderItems = cartItems.map(item => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        unit_price: item.product.price
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(orderItems)
-
-      if (itemsError) throw itemsError
-
-      // Clear the cart after successful order creation
-      await clearCart()
-
-      toast.success('Order created successfully!')
-      return order.id
-    } catch (error) {
-      console.error('Error creating order:', error)
-      toast.error('Failed to create order')
-      throw error
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider value={{
-      cartItems,
-      addToCart,
-      updateQuantity,
-      removeFromCart,
-      clearCart,
-      isLoading,
-      createOrder
-    }}>
+    <CartContext.Provider
+      value={{
+        items,
+        addToCart,
+        removeFromCart,
+        clearCart,
+        updateQuantity,
+        isLoading,
+        total,
+      }}
+    >
       {children}
     </CartContext.Provider>
-  )
+  );
 }
 
 export function useCart() {
-  const context = useContext(CartContext)
+  const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error('useCart must be used within a CartProvider')
+    throw new Error('useCart must be used within a CartProvider');
   }
-  return context
+  return context;
 }

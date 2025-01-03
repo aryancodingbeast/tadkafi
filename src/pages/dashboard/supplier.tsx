@@ -1,11 +1,14 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ProductCard } from '@/components/dashboard/product-card';
+import { ProductCard } from '@/components/product-card';
 import { useSupabase } from '@/lib/supabase-context';
 import { useAuthStore } from '@/store/auth';
 import { useState, useEffect } from 'react';
 import { Package2, TrendingUp, ShoppingCart, Plus, Search, X } from 'lucide-react';
 import type { Product } from '@/lib/database.types';
+import { format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+import { Link } from 'react-router-dom';
 
 // Add Dialog components
 import {
@@ -16,15 +19,48 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+interface OrderItem {
+  id: string;
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  products: {
+    name: string;
+    image_url: string;
+  };
+}
+
+interface Order {
+  id: string;
+  created_at: string;
+  total_amount: number;
+  status: string;
+  shipping_address: {
+    address: string;
+    city: string;
+    state: string;
+    pincode: string;
+  };
+  restaurant_id: string;
+  restaurant: {
+    business_name: string;
+  };
+  order_items: OrderItem[];
+}
+
 export function SupplierDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalProducts: 0,
     totalOrders: 0,
-    totalRevenue: 0
+    totalRevenue: 0,
+    processingOrders: 0,
+    completedOrders: 0,
+    cancelledOrders: 0
   });
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({
@@ -52,6 +88,57 @@ export function SupplierDashboard() {
     if (user) {
       fetchProducts();
       fetchStats();
+      fetchRecentOrders();
+
+      // Subscribe to order updates
+      const ordersSubscription = supabase
+        .channel('orders')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'orders',
+            filter: `supplier_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Order update received:', payload);
+            fetchRecentOrders();
+            fetchStats();
+          }
+        )
+        .subscribe();
+
+      // Subscribe to order items updates
+      const orderItemsSubscription = supabase
+        .channel('order_items')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'order_items'
+          },
+          (payload) => {
+            console.log('Order item update received:', payload);
+            fetchRecentOrders();
+            fetchStats();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        ordersSubscription.unsubscribe();
+        orderItemsSubscription.unsubscribe();
+      };
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchProducts();
+      fetchStats();
+      fetchRecentOrders();
     }
   }, [user]);
 
@@ -104,28 +191,65 @@ export function SupplierDashboard() {
         .select('*', { count: 'exact' })
         .eq('supplier_id', user.id);
 
-      // Fetch total orders
-      const { count: ordersCount } = await supabase
-        .from('orders')
-        .select('*', { count: 'exact' })
-        .eq('supplier_id', user.id);
-
-      // Calculate total revenue from completed orders
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('total_amount')
+      // Fetch stats from the new view
+      const { data: statsData, error: statsError } = await supabase
+        .from('supplier_order_stats')
+        .select('*')
         .eq('supplier_id', user.id)
-        .eq('status', 'completed');
+        .single();
 
-      const totalRevenue = orders?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
+      if (statsError) throw statsError;
 
       setStats({
         totalProducts: productsCount || 0,
-        totalOrders: ordersCount || 0,
-        totalRevenue: totalRevenue
+        totalOrders: statsData?.total_orders || 0,
+        totalRevenue: statsData?.total_revenue || 0,
+        processingOrders: statsData?.processing_orders || 0,
+        completedOrders: statsData?.completed_orders || 0,
+        cancelledOrders: statsData?.cancelled_orders || 0
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
+    }
+  };
+
+  const fetchRecentOrders = async () => {
+    if (!user) return;
+
+    try {
+      console.log('Fetching orders for supplier:', user.id);
+      
+      // Fetch all orders with details
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          restaurant:profiles!orders_restaurant_id_fkey (
+            business_name
+          ),
+          order_items (
+            id,
+            quantity,
+            unit_price,
+            products (
+              name,
+              image_url
+            )
+          )
+        `)
+        .eq('supplier_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching orders:', error);
+        throw error;
+      }
+
+      console.log('Fetched orders:', data);
+      setRecentOrders(data || []);
+    } catch (error) {
+      console.error('Error in fetchRecentOrders:', error);
+      setRecentOrders([]);
     }
   };
 
@@ -295,6 +419,55 @@ export function SupplierDashboard() {
     }
   };
 
+  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
+    if (!user) return;
+
+    try {
+      console.log('Updating order status:', orderId, newStatus);
+      
+      const { data, error } = await supabase.rpc('supplier_update_order_status', {
+        p_order_id: orderId,
+        p_new_status: newStatus,
+        p_supplier_id: user.id
+      });
+
+      if (error) {
+        console.error('Error updating order status:', error);
+        throw error;
+      }
+
+      // Update local state
+      setRecentOrders(prevOrders =>
+        prevOrders.map(order =>
+          order.id === orderId ? { ...order, status: newStatus } : order
+        )
+      );
+
+      // Refresh stats since we updated an order
+      fetchStats();
+      
+      console.log('Order status updated successfully');
+    } catch (error) {
+      console.error('Error in handleStatusUpdate:', error);
+      alert('Failed to update order status. Please try again.');
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'processing':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -302,111 +475,169 @@ export function SupplierDashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Header Section */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="container mx-auto py-8 px-4 max-w-7xl">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">Supplier Dashboard</h1>
+          <p className="text-gray-500">Manage your products and view orders</p>
+        </div>
+        <Button 
+          onClick={() => setIsAddingProduct(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <Plus className="h-4 w-4 mr-2" /> Add Product
+        </Button>
+      </div>
+
+      {/* Stats Section */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+        <div className="bg-white p-6 rounded-lg">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <Package2 className="h-6 w-6 text-blue-600" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Supplier Dashboard</h1>
-              <p className="text-gray-600 mt-1">Manage your products and view orders</p>
-            </div>
-            <Button onClick={() => setIsAddingProduct(true)} className="flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Add Product
-            </Button>
-          </div>
-        </div>
-
-        {/* Stats Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="bg-blue-100 p-3 rounded-xl">
-                <Package2 className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Products</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalProducts}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="bg-green-100 p-3 rounded-xl">
-                <ShoppingCart className="h-6 w-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Orders</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalOrders}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="bg-purple-100 p-3 rounded-xl">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">₹{stats.totalRevenue.toLocaleString()}</p>
-              </div>
+              <p className="text-gray-500">Total Products</p>
+              <p className="text-2xl font-semibold">{stats.totalProducts}</p>
             </div>
           </div>
         </div>
+        <div className="bg-white p-6 rounded-lg">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-green-50 rounded-lg">
+              <ShoppingCart className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <p className="text-gray-500">Total Orders</p>
+              <p className="text-2xl font-semibold">{stats.totalOrders}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-6 rounded-lg">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-purple-50 rounded-lg">
+              <TrendingUp className="h-6 w-6 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-gray-500">Total Revenue</p>
+              <p className="text-2xl font-semibold">₹{Number(stats.totalRevenue).toLocaleString('en-IN')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        {/* Products Section */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-            <h2 className="text-xl font-semibold text-gray-900">Your Products</h2>
-            <div className="relative flex-1 md:flex-none">
-              <Input
-                type="text"
-                placeholder="Search products..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-10 py-2 w-full md:w-72"
-              />
-              <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+      {/* Orders Section */}
+      <div className="mt-8">
+        <div className="space-y-4">
+          {recentOrders.map((order) => (
+            <div key={order.id} className="bg-white p-6 rounded-lg shadow-sm">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="font-medium">Order #{order.id.slice(0, 8)}</h3>
+                  <p className="text-sm text-gray-500">
+                    {format(new Date(order.created_at), 'MMM d, yyyy h:mm a')}
+                  </p>
+                  <p className="text-sm font-medium mt-1">
+                    Restaurant: {order.restaurant?.business_name}
+                  </p>
+                </div>
+                <Badge
+                  className={
+                    order.status === 'completed'
+                      ? 'bg-green-100 text-green-800'
+                      : order.status === 'cancelled'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }
                 >
-                  <X className="h-5 w-5" />
-                </button>
+                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                </Badge>
+              </div>
+
+              {/* Order Items */}
+              <div className="space-y-3">
+                {order.order_items?.map((item) => (
+                  <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
+                    <div>
+                      <p className="font-medium">{item.products?.name}</p>
+                      <p className="text-sm text-gray-500">
+                        {item.quantity} × ₹{Number(item.unit_price).toLocaleString('en-IN')}
+                      </p>
+                    </div>
+                    <p className="font-medium">
+                      ₹{(Number(item.quantity) * Number(item.unit_price)).toLocaleString('en-IN')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Order Total and Delivery Address */}
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex justify-between items-center mb-4">
+                  <p className="font-medium">Total Amount</p>
+                  <p className="font-medium text-lg">
+                    ₹{Number(order.total_amount).toLocaleString('en-IN')}
+                  </p>
+                </div>
+                {order.shipping_address && (
+                  <div className="text-sm text-gray-600">
+                    <p className="font-medium mb-1">Delivery Address:</p>
+                    <p>{order.shipping_address.address}</p>
+                    <p>
+                      {order.shipping_address.city}, {order.shipping_address.state} {order.shipping_address.pincode}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              {order.status === 'processing' && (
+                <div className="mt-4 flex gap-3">
+                  <Button
+                    onClick={() => handleStatusUpdate(order.id, 'completed')}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    Mark as Completed
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleStatusUpdate(order.id, 'cancelled')}
+                    className="text-red-600 border-red-600 hover:bg-red-50"
+                  >
+                    Cancel Order
+                  </Button>
+                </div>
               )}
             </div>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          {loading ? (
-            <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : filteredProducts.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <Package2 className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-4 text-lg font-medium text-gray-900">No products found</h3>
-              <p className="mt-2 text-gray-600">
-                {searchQuery
-                  ? "We couldn't find any products matching your criteria."
-                  : "Start by adding your first product."}
-              </p>
-            </div>
-          )}
+      {/* Products Section */}
+      <div className="mt-12">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-semibold">Your Products</h2>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 w-64"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredProducts.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              onEdit={() => handleEdit(product)}
+              onDelete={() => handleDelete(product)}
+            />
+          ))}
         </div>
       </div>
 

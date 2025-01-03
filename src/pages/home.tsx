@@ -11,35 +11,35 @@ export function HomePage() {
       <div className="relative">
         {/* Background Elements */}
         <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-blue-100 z-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float-slow" />
-          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float-slow-reverse" />
+          <div className="absolute -top-40 -right-40 w-72 sm:w-96 h-72 sm:h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float-slow" />
+          <div className="absolute -bottom-40 -left-40 w-72 sm:w-96 h-72 sm:h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-float-slow-reverse" />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="py-20 md:py-32">
+          <div className="py-12 sm:py-20 md:py-32">
             <div className="text-center animate-fade-in">
-              <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6 tracking-tight">
+              <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-gray-900 mb-4 sm:mb-6 tracking-tight">
                 Revolutionizing the{' '}
                 <span className="text-blue-600 relative">
                   Food Supply Chain
                   <div className="absolute -bottom-2 left-0 right-0 h-1 bg-blue-600 rounded-full animate-scale-x" />
                 </span>
               </h1>
-              <p className="text-xl md:text-2xl text-gray-600 mb-12 max-w-3xl mx-auto animate-fade-in-up delay-200">
+              <p className="text-lg sm:text-xl md:text-2xl text-gray-600 mb-8 sm:mb-12 max-w-3xl mx-auto animate-fade-in-up delay-200 px-4">
                 Connect directly with suppliers, streamline your ordering process, and grow your business with our digital platform.
               </p>
-              <div className="flex flex-col sm:flex-row gap-6 justify-center animate-fade-in-up delay-400">
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 justify-center animate-fade-in-up delay-400 px-4">
                 <Button
-                  onClick={() => navigate('/auth/register')}
-                  className="bg-blue-600 hover:bg-blue-700 text-lg px-8 py-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
+                  onClick={() => navigate('/register')}
+                  className="bg-blue-600 hover:bg-blue-700 text-base sm:text-lg px-6 sm:px-8 py-4 sm:py-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
                 >
                   Get Started
-                  <ArrowRight className="ml-2 h-5 w-5" />
+                  <ArrowRight className="ml-2 h-4 sm:h-5 w-4 sm:w-5" />
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => navigate('/auth/login')}
-                  className="text-lg px-8 py-6 rounded-xl border-2 hover:bg-gray-50 transform hover:-translate-y-0.5 transition-all duration-200"
+                  onClick={() => navigate('/login')}
+                  className="text-base sm:text-lg px-6 sm:px-8 py-4 sm:py-6 rounded-xl border-2 hover:bg-gray-50 transform hover:-translate-y-0.5 transition-all duration-200"
                 >
                   Sign In
                 </Button>
@@ -47,25 +47,25 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="flex justify-center mb-12 animate-bounce">
-            <ChevronDown className="w-8 h-8 text-gray-400" />
+          <div className="flex justify-center mb-8 sm:mb-12 animate-bounce">
+            <ChevronDown className="w-6 sm:w-8 h-6 sm:h-8 text-gray-400" />
           </div>
         </div>
       </div>
 
       {/* Features Section */}
-      <div className="py-24 bg-white relative">
+      <div className="py-16 sm:py-24 bg-white relative">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-20">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+          <div className="text-center mb-12 sm:mb-20">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
               Why Choose Our Platform?
             </h2>
-            <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+            <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto px-4">
               We're transforming how businesses connect and trade in the food industry
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 px-4">
             {[
               {
                 icon: Zap,
@@ -88,16 +88,16 @@ export function HomePage() {
             ].map((feature, index) => (
               <div
                 key={index}
-                className="bg-white p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up"
+                className="bg-white p-6 sm:p-8 rounded-2xl border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 animate-fade-in-up"
                 style={{ animationDelay: `${index * 200}ms` }}
               >
-                <div className={`w-14 h-14 bg-${feature.color}-100 rounded-xl flex items-center justify-center mb-6 transform transition-transform duration-200 hover:scale-110`}>
-                  <feature.icon className={`h-7 w-7 text-${feature.color}-600`} />
+                <div className={`w-12 sm:w-14 h-12 sm:h-14 bg-${feature.color}-100 rounded-xl flex items-center justify-center mb-4 sm:mb-6 transform transition-transform duration-200 hover:scale-110`}>
+                  <feature.icon className={`h-6 sm:h-7 w-6 sm:w-7 text-${feature.color}-600`} />
                 </div>
-                <h3 className="text-2xl font-semibold text-gray-900 mb-4">
+                <h3 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-3 sm:mb-4">
                   {feature.title}
                 </h3>
-                <p className="text-gray-600 text-lg leading-relaxed">
+                <p className="text-base sm:text-lg text-gray-600 leading-relaxed">
                   {feature.description}
                 </p>
               </div>
@@ -122,7 +122,7 @@ export function HomePage() {
             </div>
             <div className="flex gap-4 animate-fade-in-right">
               <Button
-                onClick={() => navigate('/auth/register')}
+                onClick={() => navigate('/register')}
                 className="bg-white text-blue-600 hover:bg-blue-50 text-lg px-10 py-6 rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
               >
                 Get Started
