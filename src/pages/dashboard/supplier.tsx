@@ -48,6 +48,22 @@ interface Order {
   order_items: OrderItem[];
 }
 
+function StatsCard({ title, value, icon: Icon }: { title: string; value: string | number; icon: any }) {
+  return (
+    <div className="bg-white rounded-lg p-6 shadow">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-600">{title}</p>
+          <p className="text-2xl font-semibold mt-1">{value}</p>
+        </div>
+        <div className="bg-primary/10 p-3 rounded-full">
+          <Icon className="w-6 h-6 text-primary" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SupplierDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -476,17 +492,19 @@ export function SupplierDashboard() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
-      <div className="flex justify-between items-start mb-2">
-        <div>
-          <h1 className="text-2xl font-semibold mb-1">Supplier Dashboard</h1>
-          <p className="text-gray-500">Manage your products and view orders</p>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">Supplier Dashboard</h1>
+        <div className="flex gap-4">
+          <Link to="/supplier/notifications">
+            <Button variant="outline">
+              View Notifications
+            </Button>
+          </Link>
+          <Button onClick={() => setIsAddingProduct(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Product
+          </Button>
         </div>
-        <Button 
-          onClick={() => setIsAddingProduct(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Plus className="h-4 w-4 mr-2" /> Add Product
-        </Button>
       </div>
 
       {/* Stats Section */}

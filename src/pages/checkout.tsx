@@ -8,10 +8,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { createOrder } from '@/services/orderService';
+import { formatPrice } from '@/lib/utils';
 
 export function CheckoutPage() {
   const { items, total, clearCart } = useCart();
   const { user } = useAuthStore();
+  const { supabase } = useSupabase();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -42,7 +44,8 @@ export function CheckoutPage() {
       setIsLoading(true);
 
       // Create order using the new service
-      const { orderId } = await createOrder({
+      const { orderId } = await createOrder(supabase, {
+        restaurant_id: items[0].restaurant_id, // Add restaurant_id
         supplier_id: items[0].supplier_id,
         total_amount: total,
         shipping_address: {
@@ -54,8 +57,10 @@ export function CheckoutPage() {
         items: items.map((item) => ({
           product_id: item.id,
           quantity: item.quantity,
-          unit_price: item.price,
-        }))
+          price_per_unit: item.price,
+          total_price: item.price * item.quantity
+        })),
+        payment_method: 'online', // Always online payment
       });
 
       // Clear cart and redirect to orders page
@@ -93,102 +98,102 @@ export function CheckoutPage() {
               <span>
                 {item.name} x {item.quantity}
               </span>
-              <span>₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
+              <span>{formatPrice(item.price * item.quantity)}</span>
             </div>
           ))}
           <div className="border-t pt-4 font-semibold flex justify-between">
             <span>Total</span>
-            <span>₹{total.toLocaleString('en-IN')}</span>
+            <span>{formatPrice(total)}</span>
           </div>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="address" className="block text-sm font-medium mb-1">
-            Delivery Address
-          </label>
-          <Input
-            id="address"
-            name="address"
-            value={formData.address}
-            onChange={handleInputChange}
-            required
-          />
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">Shipping Information</h2>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="address" className="block text-sm font-medium mb-1">
+                Street Address
+              </label>
+              <Input
+                id="address"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="city" className="block text-sm font-medium mb-1">
+                  City
+                </label>
+                <Input
+                  id="city"
+                  name="city"
+                  value={formData.city}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="state" className="block text-sm font-medium mb-1">
+                  State
+                </label>
+                <Input
+                  id="state"
+                  name="state"
+                  value={formData.state}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="pincode" className="block text-sm font-medium mb-1">
+                  PIN Code
+                </label>
+                <Input
+                  id="pincode"
+                  name="pincode"
+                  value={formData.pincode}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium mb-1">
+                  Phone Number
+                </label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="notes" className="block text-sm font-medium mb-1">
+                Order Notes (Optional)
+              </label>
+              <Textarea
+                id="notes"
+                name="notes"
+                value={formData.notes}
+                onChange={handleInputChange}
+                placeholder="Any special instructions for delivery"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="city" className="block text-sm font-medium mb-1">
-              City
-            </label>
-            <Input
-              id="city"
-              name="city"
-              value={formData.city}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="state" className="block text-sm font-medium mb-1">
-              State
-            </label>
-            <Input
-              id="state"
-              name="state"
-              value={formData.state}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label htmlFor="pincode" className="block text-sm font-medium mb-1">
-              PIN Code
-            </label>
-            <Input
-              id="pincode"
-              name="pincode"
-              value={formData.pincode}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="phone" className="block text-sm font-medium mb-1">
-              Phone Number
-            </label>
-            <Input
-              id="phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
-        </div>
-
-        <div>
-          <label htmlFor="notes" className="block text-sm font-medium mb-1">
-            Additional Notes
-          </label>
-          <Textarea
-            id="notes"
-            name="notes"
-            value={formData.notes}
-            onChange={handleInputChange}
-          />
-        </div>
-
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={isLoading}
-        >
-          {isLoading ? 'Processing...' : 'Place Order'}
+        <Button type="submit" className="w-full" disabled={isLoading}>
+          {isLoading ? 'Placing Order...' : 'Place Order'}
         </Button>
       </form>
     </div>

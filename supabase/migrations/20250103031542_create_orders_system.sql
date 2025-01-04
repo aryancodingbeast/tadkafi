@@ -1,122 +1,352 @@
--- Drop existing tables and related objects
-drop trigger if exists update_product_stock_after_order on order_items;
-drop trigger if exists update_product_stock_on_status_change on orders;
-drop trigger if exists validate_user_types_before_insert on orders;
-drop trigger if exists validate_user_types_before_update on orders;
-drop function if exists update_product_stock() cascade;
-drop function if exists validate_order_user_types() cascade;
-drop function if exists process_order_status() cascade;
-drop policy if exists "Restaurants can view their own orders" on orders;
-drop policy if exists "Restaurants can create their own orders" on orders;
-drop policy if exists "Suppliers can view orders for their products" on orders;
-drop policy if exists "Suppliers can update their order status" on orders;
-drop policy if exists "Restaurants can view their order items" on order_items;
-drop policy if exists "Restaurants can create their order items" on order_items;
-drop policy if exists "Suppliers can view order items for their orders" on order_items;
+-- Drop existing tables if they exist
 drop table if exists order_items cascade;
 drop table if exists orders cascade;
 drop table if exists order_status_log cascade;
+drop table if exists suppliers cascade;
+drop function if exists get_user_data cascade;
+drop type if exists order_status cascade;
+
+-- Create enum type for order status if it doesn't exist
+create type order_status as enum ('pending', 'processing', 'cancelled', 'completed');
+
+-- Function to check and create supplier if not exists
+create or replace function ensure_supplier_exists(p_supplier_id uuid)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+    v_exists boolean;
+begin
+    -- Check if supplier exists
+    select exists(
+        select 1 
+        from suppliers 
+        where id = p_supplier_id
+    ) into v_exists;
+
+    if not v_exists then
+        -- Check if user exists in auth.users
+        if not exists(
+            select 1 
+            from auth.users 
+            where id = p_supplier_id
+        ) then
+            raise exception 'User does not exist in auth.users';
+        end if;
+
+        -- Create supplier
+        insert into suppliers (id, name)
+        values (p_supplier_id, 'Unknown Supplier')
+        on conflict (id) do nothing;
+    end if;
+
+    return p_supplier_id;
+end;
+$$;
+
+-- Grant execute permission on the function
+grant execute on function ensure_supplier_exists to authenticated;
+
+-- Create suppliers table
+create table if not exists suppliers (
+  id uuid primary key references auth.users(id),
+  name text not null default 'Unknown Supplier',
+  description text default '',
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
+);
+
+-- Enable RLS on suppliers table
+alter table suppliers enable row level security;
+
+-- Policy for anyone to view suppliers
+create policy "Anyone can view suppliers"
+  on suppliers for select
+  using (true);
+
+-- Policy for anyone to create suppliers
+create policy "Anyone can create suppliers"
+  on suppliers for insert
+  with check (true);
+
+-- Policy for users to update their own supplier profile
+create policy "Users can update their own supplier profile"
+  on suppliers for update
+  using (auth.uid() = id);
 
 -- Create orders table
 create table if not exists orders (
-    id uuid default gen_random_uuid() primary key,
-    restaurant_id uuid references profiles(id) not null,
-    supplier_id uuid references auth.users(id) on delete cascade not null,
-    total_amount decimal(10,2) not null,
-    shipping_address jsonb not null,
-    status text not null default 'processing'::text check (status in ('processing', 'completed', 'cancelled')),
-    created_at timestamptz default now() not null,
-    updated_at timestamptz default now() not null,
-    version integer default 1 not null
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid not null references auth.users(id),
+  supplier_id uuid not null references suppliers(id),
+  total_amount decimal not null,
+  shipping_address jsonb not null,
+  status order_status not null default 'pending',
+  version integer not null default 1,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now(),
+  constraint ensure_supplier_exists_check check (supplier_id = ensure_supplier_exists(supplier_id))
 );
+
+-- Enable RLS on orders table
+alter table orders enable row level security;
+
+-- Policy for users to view their own orders
+create policy "Users can view their own orders"
+  on orders for select
+  using (auth.uid() = user_id);
+
+-- Policy for suppliers to view orders assigned to them
+create policy "Suppliers can view orders assigned to them"
+  on orders for select
+  using (auth.uid() = supplier_id);
+
+-- Policy for users to create their own orders
+create policy "Users can create their own orders"
+  on orders for insert
+  with check (auth.uid() = user_id);
+
+-- Policy for suppliers to update orders assigned to them
+create policy "Suppliers can update their assigned orders"
+  on orders for update
+  using (auth.uid() = supplier_id);
 
 -- Create order items table
 create table if not exists order_items (
-    id uuid default gen_random_uuid() primary key,
-    order_id uuid references orders(id) on delete cascade not null,
-    product_id uuid references products(id) on delete cascade not null,
-    quantity integer not null check (quantity > 0),
-    unit_price decimal(10,2) not null check (unit_price >= 0),
-    created_at timestamptz default now() not null
+  id uuid default uuid_generate_v4() primary key,
+  order_id uuid not null references orders(id),
+  product_id uuid not null references products(id),
+  quantity integer not null,
+  price_per_unit decimal not null,
+  total_price decimal not null,
+  created_at timestamp with time zone default now(),
+  updated_at timestamp with time zone default now()
 );
 
--- Create order status log table for audit
-create table if not exists order_status_log (
-    id uuid default gen_random_uuid() primary key,
-    order_id uuid references orders(id) on delete cascade not null,
-    old_status text not null,
-    new_status text not null,
-    changed_by uuid references auth.users(id) not null,
-    changed_at timestamptz default now() not null
-);
-
--- Enable RLS
-alter table orders enable row level security;
+-- Enable RLS on order_items table
 alter table order_items enable row level security;
+
+-- Policy for users to view their order items
+create policy "Users can view their order items"
+  on order_items for select
+  using (
+    order_id in (
+      select id from orders where user_id = auth.uid()
+    )
+  );
+
+-- Policy for suppliers to view their order items
+create policy "Suppliers can view their order items"
+  on order_items for select
+  using (
+    order_id in (
+      select id from orders where supplier_id = auth.uid()
+    )
+  );
+
+-- Policy for users to create order items
+create policy "Users can create order items with their orders"
+  on order_items for insert
+  with check (
+    order_id in (
+      select id from orders where user_id = auth.uid()
+    )
+  );
+
+-- Create order status log table
+create table if not exists order_status_log (
+  id uuid default uuid_generate_v4() primary key,
+  order_id uuid not null references orders(id),
+  old_status order_status not null,
+  new_status order_status not null,
+  changed_by uuid not null references auth.users(id),
+  created_at timestamp with time zone default now()
+);
+
+-- Enable RLS on order_status_log table
 alter table order_status_log enable row level security;
 
--- Drop existing policies
-drop policy if exists "Restaurants can view their own orders" on orders;
-drop policy if exists "Restaurants can create their own orders" on orders;
-drop policy if exists "Suppliers can view orders for their products" on orders;
-drop policy if exists "Suppliers can update order status" on orders;
-drop policy if exists "Restaurants can view their order items" on order_items;
-drop policy if exists "Restaurants can create their order items" on order_items;
-drop policy if exists "Suppliers can view order items for their orders" on order_items;
+-- Policy for users to view their order status logs
+create policy "Users can view their order status logs"
+  on order_status_log for select
+  using (
+    order_id in (
+      select id from orders where user_id = auth.uid()
+    )
+  );
 
--- RLS Policies for orders
-create policy "Users can view their own orders"
-    on orders for select
-    using (auth.uid() = restaurant_id or auth.uid() = supplier_id);
+-- Policy for suppliers to view their order status logs
+create policy "Suppliers can view their order status logs"
+  on order_status_log for select
+  using (
+    order_id in (
+      select id from orders where supplier_id = auth.uid()
+    )
+  );
 
-create policy "Restaurants can create orders"
-    on orders for insert
-    with check (auth.uid() = restaurant_id);
+-- Policy for users and suppliers to create status logs
+create policy "Users and suppliers can create status logs"
+  on order_status_log for insert
+  with check (
+    order_id in (
+      select id from orders where 
+        user_id = auth.uid() or 
+        supplier_id = auth.uid()
+    )
+  );
 
-create policy "Suppliers can update their orders"
-    on orders for update
-    using (auth.uid() = supplier_id);
+-- Drop existing trigger if exists
+drop trigger if exists order_notification_trigger on orders;
 
--- RLS Policies for order items
-create policy "Users can view their order items"
-    on order_items for select
-    using (
-        exists (
-            select 1 from orders
-            where orders.id = order_items.order_id
-            and (orders.restaurant_id = auth.uid() or orders.supplier_id = auth.uid())
-        )
-    );
+-- Create notification table for order confirmations
+drop table if exists supplier_notifications cascade;
+create table if not exists supplier_notifications (
+  id uuid primary key default uuid_generate_v4(),
+  supplier_id uuid not null references suppliers(id),
+  order_id uuid not null references orders(id),
+  status text not null default 'pending',
+  seen boolean not null default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  constraint supplier_notifications_status_check check (status in ('pending', 'accepted', 'rejected'))
+);
 
-create policy "Restaurants can create order items"
-    on order_items for insert
-    with check (
-        exists (
-            select 1 from orders
-            where orders.id = order_id
-            and orders.restaurant_id = auth.uid()
-        )
-    );
+-- Enable realtime for supplier_notifications table
+alter publication supabase_realtime add table supplier_notifications;
 
--- Create view for supplier stats
-create or replace view supplier_order_stats as
-select 
-    o.supplier_id,
-    count(distinct o.id) as total_orders,
-    count(distinct case when o.status = 'completed' then o.id end) as completed_orders,
-    count(distinct case when o.status = 'processing' then o.id end) as processing_orders,
-    count(distinct case when o.status = 'cancelled' then o.id end) as cancelled_orders,
-    coalesce(sum(case when o.status in ('processing', 'completed') then o.total_amount else 0 end), 0) as total_revenue,
-    coalesce(sum(case when o.status = 'completed' then o.total_amount else 0 end), 0) as completed_revenue
-from orders o
-group by o.supplier_id;
+-- Enable RLS on notifications table
+alter table supplier_notifications enable row level security;
 
--- Grant access to the view
-grant select on supplier_order_stats to authenticated;
+-- Policy for suppliers to view their notifications
+create policy "Suppliers can view their own notifications"
+  on supplier_notifications for select
+  using (auth.uid() = supplier_id);
+
+-- Policy for suppliers to update their notifications
+create policy "Suppliers can update their own notifications"
+  on supplier_notifications for update
+  using (auth.uid() = supplier_id);
+
+-- Function to create notification when order is placed
+create or replace function create_supplier_notification()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  v_supplier_exists boolean;
+  v_debug_info jsonb;
+  v_notification_id uuid;
+begin
+  -- Create debug info
+  v_debug_info := jsonb_build_object(
+    'order_id', NEW.id,
+    'supplier_id', NEW.supplier_id,
+    'status', NEW.status,
+    'trigger_name', TG_NAME,
+    'trigger_when', TG_WHEN,
+    'trigger_level', TG_LEVEL,
+    'trigger_op', TG_OP
+  );
+  
+  raise notice 'Creating notification with debug info: %', v_debug_info;
+
+  -- Check if supplier exists
+  select exists(
+    select 1 
+    from suppliers 
+    where id = NEW.supplier_id
+  ) into v_supplier_exists;
+
+  if not v_supplier_exists then
+    raise notice 'Supplier % does not exist', NEW.supplier_id;
+    raise exception 'Supplier does not exist';
+  end if;
+
+  raise notice 'Supplier % exists, creating notification', NEW.supplier_id;
+
+  -- Create notification for supplier
+  insert into supplier_notifications (supplier_id, order_id, status)
+  values (NEW.supplier_id, NEW.id, 'pending')
+  returning id into v_notification_id;
+
+  raise notice 'Created notification with ID: %', v_notification_id;
+  
+  return NEW;
+exception when others then
+  raise notice 'Error in create_supplier_notification: % %', SQLERRM, SQLSTATE;
+  return NEW;
+end;
+$$;
+
+-- Create trigger to create notification when order is placed
+drop trigger if exists create_supplier_notification_trigger on orders;
+create trigger create_supplier_notification_trigger
+  after insert
+  on orders
+  for each row
+  execute function create_supplier_notification();
+
+-- Function to update order status when notification is updated
+create or replace function update_order_status()
+returns trigger
+language plpgsql
+security definer
+as $$
+declare
+  v_order_status order_status;
+  v_debug_info jsonb;
+begin
+  -- Create debug info
+  v_debug_info := jsonb_build_object(
+    'notification_id', NEW.id,
+    'order_id', NEW.order_id,
+    'old_status', OLD.status,
+    'new_status', NEW.status
+  );
+  
+  raise notice 'Updating order status with debug info: %', v_debug_info;
+
+  -- Map notification status to order status
+  case NEW.status
+    when 'accepted' then
+      v_order_status := 'processing'::order_status;
+    when 'rejected' then
+      v_order_status := 'cancelled'::order_status;
+    else
+      return NEW;
+  end case;
+
+  raise notice 'Mapped notification status % to order status %', NEW.status, v_order_status;
+
+  -- Update order status
+  update orders
+  set status = v_order_status,
+      updated_at = now()
+  where id = NEW.order_id;
+
+  raise notice 'Updated order % status to %', NEW.order_id, v_order_status;
+
+  return NEW;
+exception when others then
+  raise notice 'Error in update_order_status: % %', SQLERRM, SQLSTATE;
+  return NEW;
+end;
+$$;
+
+-- Create trigger to update order status when notification is updated
+drop trigger if exists update_order_status_trigger on supplier_notifications;
+create trigger update_order_status_trigger
+  after update of status
+  on supplier_notifications
+  for each row
+  when (OLD.status <> NEW.status)
+  execute function update_order_status();
 
 -- Function to handle order creation with automatic stock update
 create or replace function create_order(
-    p_restaurant_id uuid,
+    p_user_id uuid,
     p_supplier_id uuid,
     p_total_amount decimal,
     p_shipping_address jsonb,
@@ -145,17 +375,17 @@ begin
 
     -- Create order with explicit status
     insert into orders (
-        restaurant_id,
+        user_id,
         supplier_id,
         total_amount,
         shipping_address,
         status
     ) values (
-        p_restaurant_id,
+        p_user_id,
         p_supplier_id,
         p_total_amount,
         p_shipping_address,
-        'processing'::text
+        'pending'::order_status
     ) returning id into v_order_id;
 
     -- Create order items and update stock
@@ -166,12 +396,14 @@ begin
             order_id,
             product_id,
             quantity,
-            unit_price
+            price_per_unit,
+            total_price
         ) values (
             v_order_id,
             (v_item->>'product_id')::uuid,
             (v_item->>'quantity')::integer,
-            (v_item->>'unit_price')::decimal
+            (v_item->>'unit_price')::decimal,
+            (v_item->>'quantity')::integer * (v_item->>'unit_price')::decimal
         );
 
         -- Update stock
@@ -179,19 +411,6 @@ begin
         set stock_quantity = stock_quantity - (v_item->>'quantity')::integer
         where id = (v_item->>'product_id')::uuid;
     end loop;
-
-    -- Log initial status
-    insert into order_status_log (
-        order_id,
-        old_status,
-        new_status,
-        changed_by
-    ) values (
-        v_order_id,
-        'processing'::text,
-        'processing'::text,
-        auth.uid()
-    );
 
     return v_order_id;
 end;
@@ -274,9 +493,9 @@ language plpgsql
 security definer
 as $$
 declare
+    v_user_id uuid;
     v_current_status text;
     v_current_version integer;
-    v_user_id uuid;
 begin
     -- Get current user ID
     v_user_id := auth.uid();
@@ -292,8 +511,9 @@ begin
         return false;
     end if;
 
-    -- Only allow cancellation or completion from processing
-    if v_current_status != 'processing' or p_new_status not in ('completed', 'cancelled') then
+    -- Define valid status transitions
+    if (v_current_status = 'pending' and p_new_status not in ('processing', 'cancelled')) or
+       (v_current_status = 'processing' and p_new_status not in ('pending', 'cancelled')) then
         raise exception 'Invalid status transition from % to %', v_current_status, p_new_status;
     end if;
 
@@ -371,7 +591,7 @@ where not exists (
 -- Insert test data
 insert into orders (
   id,
-  restaurant_id,
+  user_id,
   supplier_id,
   status,
   total_amount,
@@ -379,7 +599,7 @@ insert into orders (
   created_at
 ) values (
   '12345678-1234-5678-1234-567812345678',
-  'e96eceb5-8e84-4ec9-8d91-b60147822fb1', -- Restaurant ID
+  'e96eceb5-8e84-4ec9-8d91-b60147822fb1', -- User ID
   'f0a6ed8b-07f9-4179-9d88-c6d99c6c0cdc', -- Supplier ID
   'processing',
   1500.00,
@@ -414,10 +634,48 @@ insert into order_items (
   order_id,
   product_id,
   quantity,
-  unit_price
+  price_per_unit,
+  total_price
 ) values (
   '12345678-1234-5678-1234-567812345678',
   (select id from products where supplier_id = 'f0a6ed8b-07f9-4179-9d88-c6d99c6c0cdc' limit 1),
   5,
-  300.00
+  300.00,
+  1500.00
 );
+
+-- Create view for supplier order stats
+create or replace view supplier_order_stats as
+with order_counts as (
+  select
+    supplier_id,
+    count(*) filter (where status = 'pending') as pending_orders,
+    count(*) filter (where status = 'processing') as processing_orders,
+    count(*) filter (where status = 'cancelled') as cancelled_orders,
+    count(*) as total_orders
+  from orders
+  group by supplier_id
+),
+order_revenue as (
+  select
+    o.supplier_id,
+    sum(o.total_amount) filter (where o.status = 'processing') as processing_revenue,
+    sum(o.total_amount) as total_revenue
+  from orders o
+  group by o.supplier_id
+)
+select
+  s.id as supplier_id,
+  s.name as supplier_name,
+  coalesce(oc.pending_orders, 0) as pending_orders,
+  coalesce(oc.processing_orders, 0) as processing_orders,
+  coalesce(oc.cancelled_orders, 0) as cancelled_orders,
+  coalesce(oc.total_orders, 0) as total_orders,
+  coalesce(rev.processing_revenue, 0) as processing_revenue,
+  coalesce(rev.total_revenue, 0) as total_revenue
+from suppliers s
+left join order_counts oc on s.id = oc.supplier_id
+left join order_revenue rev on s.id = rev.supplier_id;
+
+-- Grant access to the view
+grant select on supplier_order_stats to authenticated;
