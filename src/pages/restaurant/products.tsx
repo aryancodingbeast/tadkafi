@@ -1,21 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useSupabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Package2, Search } from 'lucide-react';
 import type { Product } from '@/lib/database.types';
-import { FOOD_CATEGORIES } from '@/lib/constants';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { Check, ChevronsUpDown } from "lucide-react";
 
 export function RestaurantProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [categoryOpen, setCategoryOpen] = useState(false);
   const { supabase } = useSupabase();
 
   useEffect(() => {
@@ -30,7 +21,14 @@ export function RestaurantProductsPage() {
         .select('*, profiles(business_name)');
 
       if (error) throw error;
-      setProducts(data || []);
+
+      // Transform the data to include full image URLs
+      const productsWithUrls = data?.map(product => ({
+        ...product,
+        image_url: product.image_url ? supabase.storage.from('products').getPublicUrl(`${product.supplier_id}/${product.image_url}`).data.publicUrl : null
+      })) || [];
+
+      setProducts(productsWithUrls);
     } catch (error) {
       console.error('Error loading products:', error);
       alert('Failed to load products. Please try again.');
@@ -41,10 +39,9 @@ export function RestaurantProductsPage() {
 
   const filteredProducts = products.filter(
     (product) =>
-      (product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-       product.category?.toLowerCase().includes(searchQuery.toLowerCase())) &&
-      (!selectedCategory || product.category === selectedCategory)
+      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.category?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading) {
@@ -62,69 +59,17 @@ export function RestaurantProductsPage() {
         <p className="text-gray-500">Browse products from all suppliers</p>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-4">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-          <Input
+          <input
             placeholder="Search products by name, description, or category..."
             type="search"
-            className="pl-8"
+            className="pl-8 h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              role="combobox"
-              aria-expanded={categoryOpen}
-              className="w-[200px] justify-between"
-            >
-              {selectedCategory || "All Categories"}
-              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[200px] p-0">
-            <Command>
-              <CommandInput placeholder="Search category..." />
-              <CommandEmpty>No category found.</CommandEmpty>
-              <CommandGroup>
-                <CommandItem
-                  onSelect={() => {
-                    setSelectedCategory('');
-                    setCategoryOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      !selectedCategory ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  All Categories
-                </CommandItem>
-                {FOOD_CATEGORIES.map((category) => (
-                  <CommandItem
-                    key={category}
-                    onSelect={() => {
-                      setSelectedCategory(category);
-                      setCategoryOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4",
-                        selectedCategory === category ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {category}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </Command>
-          </PopoverContent>
-        </Popover>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
