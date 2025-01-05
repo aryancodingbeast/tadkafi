@@ -78,6 +78,7 @@ function StatsCard({ title, value, icon: Icon }: { title: string; value: string 
 }
 
 export function SupplierDashboard() {
+  const { supabase } = useSupabase();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingProduct, setIsAddingProduct] = useState(false);
@@ -112,8 +113,39 @@ export function SupplierDashboard() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
-  const { supabase } = useSupabase();
   const { user } = useAuthStore();
+
+  useEffect(() => {
+    // Initial fetch
+    fetchProducts();
+    fetchStats();
+
+    // Set up realtime subscriptions
+    const productsSubscription = supabase
+      .channel('products-changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'products' }, 
+        (payload) => {
+          console.log('Products change received:', payload);
+          fetchProducts(); // Refresh products on any change
+      })
+      .subscribe();
+
+    const ordersSubscription = supabase
+      .channel('orders-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        (payload) => {
+          console.log('Orders change received:', payload);
+          fetchStats(); // Refresh stats on any order change
+      })
+      .subscribe();
+
+    return () => {
+      productsSubscription.unsubscribe();
+      ordersSubscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (user) {
