@@ -115,61 +115,54 @@ export function ProductsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredProducts.map((product) => (
           <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="relative aspect-square">
-              {product.image_url ? (
-                <img 
-                  src={product.image_url} 
-                  alt={product.name} 
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-gray-100">
-                  <Package2 className="h-12 w-12 text-gray-400" />
-                </div>
-              )}
-            </div>
             <div className="p-4">
-              <h3 className="text-lg font-semibold">{product.name}</h3>
-              <p className="text-gray-600 text-sm mt-1">{product.description}</p>
-              <p className="text-sm text-gray-500 mt-1">{product.category}</p>
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">{product.name}</h3>
+                  <p className="text-gray-600 text-sm mt-1">{product.description}</p>
+                  <p className="text-sm text-gray-500 mt-1">{product.category}</p>
+                </div>
+                <Package2 className="h-5 w-5 text-gray-400" />
+              </div>
               <div className="mt-4 flex items-center justify-between">
                 <div>
                   <p className="text-gray-900 font-medium">₹{product.price.toFixed(2)}</p>
                   <p className="text-gray-500 text-sm">per {product.unit}</p>
                 </div>
                 <p className="text-gray-500 text-sm">
-                  by {(product.profiles as any)?.business_name}
+                  by {product.profiles?.business_name}
                 </p>
               </div>
               <div className="mt-4 flex items-center justify-between">
-                <div className="flex items-center border rounded-md">
-                  <Button 
-                    variant="ghost" 
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
                     size="icon"
-                    className="h-8 w-8"
                     onClick={() => handleQuantityChange(product.id, -1)}
-                    disabled={addingToCart[product.id]}
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="w-12 text-center">{quantities[product.id] || 1}</span>
-                  <Button 
-                    variant="ghost" 
+                  <span>{quantities[product.id] || 1}</span>
+                  <Button
+                    variant="outline"
                     size="icon"
-                    className="h-8 w-8"
                     onClick={() => handleQuantityChange(product.id, 1)}
-                    disabled={addingToCart[product.id]}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
-                <Button 
-                  className="flex-1"
+                <Button
                   onClick={() => handleAddToCart(product)}
                   disabled={addingToCart[product.id]}
                 >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  {addingToCart[product.id] ? 'Adding...' : 'Add to Cart'}
+                  {addingToCart[product.id] ? (
+                    'Adding...'
+                  ) : (
+                    <>
+                      <ShoppingCart className="mr-2 h-4 w-4" />
+                      Add to Cart
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
