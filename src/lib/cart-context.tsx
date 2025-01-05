@@ -8,8 +8,9 @@ interface CartItem {
   quantity: number;
   name: string;
   price: number;
-  image_url: string;
+  image_url?: string;
   supplier_id: string;
+  supplier_name: string;
 }
 
 interface CartContextType {
@@ -40,7 +41,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data: product, error } = await supabase
         .from('products')
-        .select('*')
+        .select('*, profiles(business_name)')
         .eq('id', productId)
         .single();
 
@@ -54,19 +55,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (product.stock_quantity < quantity) {
         toast.error('Not enough stock available');
         return;
-      }
-
-      // Check if item from same supplier exists
-      const existingItem = items.find((item) => item.supplier_id === product.supplier_id);
-      if (existingItem && existingItem.id !== productId) {
-        const confirm = window.confirm(
-          'You can only order from one supplier at a time. Would you like to clear your cart and add this item?'
-        );
-        if (confirm) {
-          setItems([]);
-        } else {
-          return;
-        }
       }
 
       // Check if item already exists
@@ -89,6 +77,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             price: product.price,
             image_url: product.image_url,
             supplier_id: product.supplier_id,
+            supplier_name: (product.profiles as any)?.business_name || 'Unknown Supplier',
           },
         ]);
       }
@@ -106,17 +95,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems(items.filter((item) => item.id !== productId));
   }, [items]);
 
+  const clearCart = useCallback(() => {
+    setItems([]);
+  }, []);
+
   const updateQuantity = useCallback((productId: string, quantity: number) => {
+    if (quantity < 1) {
+      removeFromCart(productId);
+      return;
+    }
+
     setItems(
       items.map((item) =>
         item.id === productId ? { ...item, quantity } : item
       )
     );
-  }, [items]);
-
-  const clearCart = useCallback(() => {
-    setItems([]);
-  }, []);
+  }, [items, removeFromCart]);
 
   const total = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
 

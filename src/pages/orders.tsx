@@ -62,22 +62,34 @@ export function OrdersPage() {
         .on(
           'postgres_changes',
           {
-            event: 'UPDATE',
+            event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
             schema: 'public',
             table: 'orders',
             filter: `user_id=eq.${userId}`
           },
-          (payload) => {
+          async (payload) => {
             console.log('Received real-time update:', payload);
             
-            const updatedOrder = payload.new as Order;
-            setOrders(prevOrders => 
-              prevOrders.map(order => 
-                order.id === updatedOrder.id 
-                  ? { ...order, ...updatedOrder }
-                  : order
-              )
-            );
+            if (payload.eventType === 'UPDATE') {
+              const updatedOrder = payload.new as Order;
+              setOrders(prevOrders => 
+                prevOrders.map(order => 
+                  order.id === updatedOrder.id 
+                    ? { ...order, ...updatedOrder }
+                    : order
+                )
+              );
+              
+              // If this was the selected order, update it
+              if (selectedOrder?.id === updatedOrder.id) {
+                setSelectedOrder(prev => prev ? { ...prev, ...updatedOrder } : null);
+              }
+            } else if (payload.eventType === 'DELETE') {
+              setOrders(prevOrders => prevOrders.filter(order => order.id !== payload.old.id));
+            } else if (payload.eventType === 'INSERT') {
+              const newOrder = payload.new as Order;
+              setOrders(prevOrders => [newOrder, ...prevOrders]);
+            }
           }
         )
         .subscribe((status) => {
@@ -150,21 +162,42 @@ export function OrdersPage() {
   }
 
   async function handlePaymentSuccess() {
-    if (!selectedOrder) return;
+    if (!selectedOrder) {
+      console.error('No order selected for payment');
+      toast.error('No order selected for payment');
+      return;
+    }
 
     try {
       console.log('Starting payment update for order:', selectedOrder.id);
-      const { data: { session } } = await supabase.auth.getSession();
-      console.log('Current user:', session?.user?.id);
-
+      
+      // Verify order exists in local state
+      const orderExists = orders.some(order => order.id === selectedOrder.id);
+      if (!orderExists) {
+        console.error('Order not found in local state:', selectedOrder.id);
+        toast.error('Order not found. Please refresh the page.');
+        return;
+      }
+      
       await updateOrderPaymentStatus(supabase, selectedOrder.id, 'completed');
       console.log('Payment status updated successfully');
+      
+      // Fetch updated orders to ensure UI is in sync
+      const updatedOrders = await getUserOrders(supabase);
+      if (updatedOrders) {
+        setOrders(updatedOrders);
+      }
       
       toast.success('Payment successful! Order is being processed.');
       setSelectedOrder(null);
     } catch (error) {
       console.error('Error updating order status:', error);
-      toast.error('Failed to update order status.');
+      if (error instanceof Error && error.message.includes('not found')) {
+        toast.error('Order not found. Please refresh the page.');
+      } else {
+        toast.error('Failed to update order status. Please try again.');
+      }
+      setSelectedOrder(null);
     }
   }
 
@@ -181,9 +214,22 @@ export function OrdersPage() {
                 </h3>
                 {getStatusBadge(order.status, order.payment_status)}
               </div>
-              <p className="text-sm text-gray-500">
-                {new Date(order.created_at).toLocaleDateString()}
-              </p>
+              <div className="flex items-center gap-4">
+                <p className="text-sm text-gray-500">
+                  {new Date(order.created_at).toLocaleDateString()}
+                </p>
+                {order.status === 'processing' && order.payment_status === 'pending' && (
+                  <Button
+                    onClick={() => handlePayment(order)}
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    Pay Now
+                  </Button>
+                )}
+                {order.payment_status === 'completed' && (
+                  <Badge className="bg-green-500">Paid</Badge>
+                )}
+              </div>
             </div>
 
             <Separator className="my-4" />
@@ -210,24 +256,6 @@ export function OrdersPage() {
               <p className="font-bold">
                 Total: ₹{order.total_amount}
               </p>
-              {order.status === 'processing' && order.payment_status === 'pending' && (
-                <Button
-                  onClick={() => handlePayment(order)}
-                  className="bg-green-500 hover:bg-green-600"
-                >
-                  Pay Now
-                </Button>
-              )}
-              {order.payment_status === 'completed' && (
-                <Badge className="bg-green-500">
-                  Paid
-                </Badge>
-              )}
-              {order.payment_status === 'refunded' && (
-                <Badge className="bg-yellow-500">
-                  Refunded
-                </Badge>
-              )}
             </div>
           </Card>
         ))}

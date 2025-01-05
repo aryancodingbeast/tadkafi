@@ -1,10 +1,11 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { LogIn, Menu, Store, X, Bell } from 'lucide-react';
+import { LogIn, Menu, Store, X, Bell, ShoppingBag } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '../ui/button';
 import { useState } from 'react';
 import { CartMenu } from '../cart-menu';
 import { useNotificationStore } from '@/store/notifications';
+import { useUnpaidOrdersStore } from '@/store/unpaidOrders';
 import { useSupabase } from '@/lib/supabase-context';
 import { useEffect } from 'react';
 import { getUnseenNotificationCount, subscribeToNotifications } from '@/services/notificationService';
@@ -15,24 +16,75 @@ export function Navbar() {
   const { supabase } = useSupabase();
   const notificationCount = useNotificationStore((state) => state.count);
   const setNotificationCount = useNotificationStore((state) => state.setCount);
+  const unpaidOrdersCount = useUnpaidOrdersStore((state) => state.count);
+  const setUnpaidOrdersCount = useUnpaidOrdersStore((state) => state.setCount);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (user && profile?.type === 'supplier') {
-      // Load initial notification count
-      getUnseenNotificationCount(supabase)
-        .then(setNotificationCount)
-        .catch(console.error);
+    if (user) {
+      if (profile?.type === 'supplier') {
+        // Load initial notification count
+        getUnseenNotificationCount(supabase)
+          .then(setNotificationCount)
+          .catch(console.error);
 
-      // Subscribe to notification changes
-      const cleanup = subscribeToNotifications(supabase, user.id, async () => {
-        const count = await getUnseenNotificationCount(supabase);
-        setNotificationCount(count);
-      });
+        // Subscribe to notification changes
+        const cleanup = subscribeToNotifications(supabase, user.id, async () => {
+          const count = await getUnseenNotificationCount(supabase);
+          setNotificationCount(count);
+        });
 
-      return cleanup;
+        return cleanup;
+      } else if (profile?.type === 'restaurant') {
+        // Load initial unpaid orders count
+        const fetchUnpaidOrders = async () => {
+          const { data, error } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('status', 'processing')
+            .eq('payment_status', 'pending');
+
+          if (!error && data) {
+            setUnpaidOrdersCount(data.length);
+          }
+        };
+
+        fetchUnpaidOrders();
+
+        // Subscribe to order changes
+        const channel = supabase
+          .channel('orders-changes')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'orders',
+              filter: `user_id=eq.${user.id}`,
+            },
+            async () => {
+              // Refetch unpaid orders count
+              const { data, error } = await supabase
+                .from('orders')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('status', 'processing')
+                .eq('payment_status', 'pending');
+
+              if (!error && data) {
+                setUnpaidOrdersCount(data.length);
+              }
+            }
+          )
+          .subscribe();
+
+        return () => {
+          channel.unsubscribe();
+        };
+      }
     }
-  }, [user, profile, supabase, setNotificationCount]);
+  }, [user, profile, supabase, setNotificationCount, setUnpaidOrdersCount]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -66,9 +118,19 @@ export function Navbar() {
                   Dashboard
                 </Button>
                 {isRestaurant && (
-                  <Button variant="ghost" onClick={() => navigate('/orders')}>
-                    Orders
-                  </Button>
+                  <>
+                    <Button variant="ghost" onClick={() => navigate('/products')}>
+                      Products
+                    </Button>
+                    <Button variant="ghost" onClick={() => navigate('/orders')} className="relative">
+                      Orders
+                      {unpaidOrdersCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                          {unpaidOrdersCount}
+                        </span>
+                      )}
+                    </Button>
+                  </>
                 )}
                 {profile?.type === 'supplier' && (
                   <Link to="/supplier/notifications" className="relative">
@@ -133,29 +195,33 @@ export function Navbar() {
                   Dashboard
                 </Button>
                 {isRestaurant && (
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      navigate('/orders');
-                      setIsMenuOpen(false);
-                    }}
-                  >
-                    Orders
-                  </Button>
-                )}
-                {profile?.type === 'supplier' && (
-                  <Link
-                    to="/supplier/notifications"
-                    className="relative w-full justify-start"
-                  >
-                    <Bell className="h-5 w-5 text-gray-600 hover:text-gray-800" />
-                    {notificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                        {notificationCount}
-                      </span>
-                    )}
-                  </Link>
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        navigate('/products');
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      Products
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start relative"
+                      onClick={() => {
+                        navigate('/orders');
+                        setIsMenuOpen(false);
+                      }}
+                    >
+                      Orders
+                      {unpaidOrdersCount > 0 && (
+                        <span className="absolute top-2 right-2 bg-yellow-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
+                          {unpaidOrdersCount}
+                        </span>
+                      )}
+                    </Button>
+                  </>
                 )}
                 <Button
                   variant="outline"

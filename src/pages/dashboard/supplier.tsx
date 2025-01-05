@@ -4,27 +4,40 @@ import { ProductCard } from '@/components/product-card';
 import { useSupabase } from '@/lib/supabase-context';
 import { useAuthStore } from '@/store/auth';
 import { useState, useEffect } from 'react';
-import { Package2, TrendingUp, ShoppingCart, Plus, Search, X } from 'lucide-react';
+import { Package2, TrendingUp, ShoppingCart, Plus, Search, X, ChevronsUpDown, Check, Pencil, Trash2 } from 'lucide-react';
 import type { Product } from '@/lib/database.types';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
+import { FOOD_CATEGORIES } from '@/lib/constants';
+import { cn } from "@/lib/utils";
+import { toast } from 'react-hot-toast';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
-// Add Dialog components
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 
 interface OrderItem {
   id: string;
   product_id: string;
   quantity: number;
-  unit_price: number;
-  products: {
+  price_per_unit: number;
+  total_price: number;
+  product: {
     name: string;
     image_url: string;
   };
@@ -66,7 +79,6 @@ function StatsCard({ title, value, icon: Icon }: { title: string; value: string 
 
 export function SupplierDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -97,6 +109,9 @@ export function SupplierDashboard() {
     stock_quantity: '',
     image: null as File | null
   });
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const { supabase } = useSupabase();
   const { user } = useAuthStore();
 
@@ -104,49 +119,6 @@ export function SupplierDashboard() {
     if (user) {
       fetchProducts();
       fetchStats();
-      fetchRecentOrders();
-
-      // Subscribe to order updates
-      const ordersSubscription = supabase
-        .channel('orders')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'orders',
-            filter: `supplier_id=eq.${user.id}`
-          },
-          (payload) => {
-            console.log('Order update received:', payload);
-            fetchRecentOrders();
-            fetchStats();
-          }
-        )
-        .subscribe();
-
-      // Subscribe to order items updates
-      const orderItemsSubscription = supabase
-        .channel('order_items')
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'order_items'
-          },
-          (payload) => {
-            console.log('Order item update received:', payload);
-            fetchRecentOrders();
-            fetchStats();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        ordersSubscription.unsubscribe();
-        orderItemsSubscription.unsubscribe();
-      };
     }
   }, [user]);
 
@@ -154,23 +126,8 @@ export function SupplierDashboard() {
     if (user) {
       fetchProducts();
       fetchStats();
-      fetchRecentOrders();
     }
   }, [user]);
-
-  useEffect(() => {
-    if (editingProduct) {
-      setEditForm({
-        name: editingProduct.name,
-        description: editingProduct.description || '',
-        price: editingProduct.price.toString(),
-        unit: editingProduct.unit,
-        category: editingProduct.category,
-        stock_quantity: editingProduct.stock_quantity.toString(),
-        image: null
-      });
-    }
-  }, [editingProduct]);
 
   const fetchProducts = async () => {
     if (!user) return;
@@ -202,22 +159,26 @@ export function SupplierDashboard() {
 
     try {
       // Fetch total products
-      const { count: productsCount } = await supabase
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
-        .select('*', { count: 'exact' })
+        .select('id')
         .eq('supplier_id', user.id);
 
-      // Fetch stats from the new view
+      if (productsError) throw productsError;
+
+      // Fetch stats from the view
       const { data: statsData, error: statsError } = await supabase
         .from('supplier_order_stats')
         .select('*')
         .eq('supplier_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (statsError) throw statsError;
+      if (statsError && statsError.message !== 'JSON object requested, multiple (or no) rows returned') {
+        throw statsError;
+      }
 
       setStats({
-        totalProducts: productsCount || 0,
+        totalProducts: productsData?.length || 0,
         totalOrders: statsData?.total_orders || 0,
         totalRevenue: statsData?.total_revenue || 0,
         processingOrders: statsData?.processing_orders || 0,
@@ -226,46 +187,7 @@ export function SupplierDashboard() {
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
-    }
-  };
-
-  const fetchRecentOrders = async () => {
-    if (!user) return;
-
-    try {
-      console.log('Fetching orders for supplier:', user.id);
-      
-      // Fetch all orders with details
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          restaurant:profiles!orders_restaurant_id_fkey (
-            business_name
-          ),
-          order_items (
-            id,
-            quantity,
-            unit_price,
-            products (
-              name,
-              image_url
-            )
-          )
-        `)
-        .eq('supplier_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching orders:', error);
-        throw error;
-      }
-
-      console.log('Fetched orders:', data);
-      setRecentOrders(data || []);
-    } catch (error) {
-      console.error('Error in fetchRecentOrders:', error);
-      setRecentOrders([]);
+      toast.error('Failed to fetch statistics');
     }
   };
 
@@ -323,39 +245,25 @@ export function SupplierDashboard() {
     }
   };
 
-  const handleDelete = async (product: Product) => {
+  const handleDeleteProduct = async () => {
+    if (!productToDelete || !user) return;
+
     try {
-      // Delete from database
       const { error } = await supabase
         .from('products')
         .delete()
-        .eq('id', product.id)
-        .eq('supplier_id', user?.id); // Extra safety check
+        .eq('id', productToDelete.id)
+        .eq('supplier_id', user.id);
 
       if (error) throw error;
 
-      // Delete image from storage if it exists
-      if (product.image_url) {
-        const imagePath = product.image_url.split('/').pop(); // Get filename from URL
-        if (imagePath) {
-          const { error: storageError } = await supabase.storage
-            .from('products')
-            .remove([`${user?.id}/${imagePath}`]);
-          
-          if (storageError) {
-            console.error('Error deleting image:', storageError);
-          }
-        }
-      }
-
-      // Update local state
-      setProducts(products.filter(p => p.id !== product.id));
-      
-      // Refresh stats since we deleted a product
-      fetchStats();
+      setProducts(products.filter(p => p.id !== productToDelete.id));
+      setIsDeleteDialogOpen(false);
+      setProductToDelete(null);
+      toast.success('Product deleted successfully');
     } catch (error) {
       console.error('Error deleting product:', error);
-      alert('Failed to delete product. Please try again.');
+      toast.error('Failed to delete product');
     }
   };
 
@@ -384,38 +292,41 @@ export function SupplierDashboard() {
     }
   };
 
-  const handleAddProduct = async () => {
-    try {
-      let imageUrl = '';
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
 
-      // Upload image if selected
-      if (newProductForm.image) {
-        imageUrl = await handleImageUpload(newProductForm.image);
+    try {
+      if (!newProductForm.category) {
+        toast.error('Please select a category');
+        return;
       }
 
-      const newProduct = {
-        name: newProductForm.name,
-        description: newProductForm.description,
-        price: parseFloat(newProductForm.price),
-        unit: newProductForm.unit,
-        category: newProductForm.category,
-        stock_quantity: parseInt(newProductForm.stock_quantity),
-        image_url: imageUrl,
-        supplier_id: user?.id
-      };
+      if (!newProductForm.unit) {
+        toast.error('Please enter a unit');
+        return;
+      }
 
       const { data, error } = await supabase
         .from('products')
-        .insert([newProduct])
+        .insert([
+          {
+            name: newProductForm.name,
+            description: newProductForm.description,
+            price: parseFloat(newProductForm.price),
+            unit: newProductForm.unit,
+            category: newProductForm.category,
+            stock_quantity: parseInt(newProductForm.stock_quantity),
+            supplier_id: user.id,
+          },
+        ])
         .select()
         .single();
 
       if (error) throw error;
 
-      // Add new product to local state
       setProducts([data, ...products]);
-
-      // Reset form and close modal
+      setIsAddingProduct(false);
       setNewProductForm({
         name: '',
         description: '',
@@ -425,47 +336,10 @@ export function SupplierDashboard() {
         stock_quantity: '',
         image: null
       });
-      setIsAddingProduct(false);
-
-      // Refresh stats
-      fetchStats();
+      toast.success('Product added successfully');
     } catch (error) {
       console.error('Error adding product:', error);
-      alert('Failed to add product. Please try again.');
-    }
-  };
-
-  const handleStatusUpdate = async (orderId: string, newStatus: string) => {
-    if (!user) return;
-
-    try {
-      console.log('Updating order status:', orderId, newStatus);
-      
-      const { data, error } = await supabase.rpc('supplier_update_order_status', {
-        p_order_id: orderId,
-        p_new_status: newStatus,
-        p_supplier_id: user.id
-      });
-
-      if (error) {
-        console.error('Error updating order status:', error);
-        throw error;
-      }
-
-      // Update local state
-      setRecentOrders(prevOrders =>
-        prevOrders.map(order =>
-          order.id === orderId ? { ...order, status: newStatus } : order
-        )
-      );
-
-      // Refresh stats since we updated an order
-      fetchStats();
-      
-      console.log('Order status updated successfully');
-    } catch (error) {
-      console.error('Error in handleStatusUpdate:', error);
-      alert('Failed to update order status. Please try again.');
+      toast.error('Failed to add product');
     }
   };
 
@@ -500,134 +374,155 @@ export function SupplierDashboard() {
               View Notifications
             </Button>
           </Link>
-          <Button onClick={() => setIsAddingProduct(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Product
-          </Button>
+          <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Product
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Product</DialogTitle>
+                <DialogDescription>Fill in the product details below. All fields are required.</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddProduct}>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Name</label>
+                    <Input
+                      value={newProductForm.name}
+                      onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })}
+                      placeholder="Enter product name (e.g., Fresh Tomatoes)"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Description</label>
+                    <Input
+                      value={newProductForm.description}
+                      onChange={(e) => setNewProductForm({ ...newProductForm, description: e.target.value })}
+                      placeholder="Brief description of your product"
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Price</label>
+                      <Input
+                        type="number"
+                        value={newProductForm.price}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, price: e.target.value })}
+                        placeholder="Enter price in ₹"
+                        required
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Unit</label>
+                      <Input
+                        value={newProductForm.unit}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, unit: e.target.value })}
+                        placeholder="e.g., kg, piece, dozen"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Category</label>
+                      <select
+                        value={newProductForm.category}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
+                        className="w-full px-3 py-2 border rounded-md"
+                        required
+                      >
+                        <option value="">Select food category...</option>
+                        {FOOD_CATEGORIES.map((category) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Stock Quantity</label>
+                      <Input
+                        type="number"
+                        value={newProductForm.stock_quantity}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, stock_quantity: e.target.value })}
+                        placeholder="Available quantity"
+                        required
+                        min="0"
+                        step="1"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Product Image</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setNewProductForm({ ...newProductForm, image: file });
+                        }
+                      }}
+                      className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    />
+                    <p className="text-xs text-gray-500">Upload a clear image of your product</p>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAddingProduct(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    Add Product
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
       {/* Stats Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <div className="bg-white p-6 rounded-lg">
+        <div className="bg-white rounded-lg p-6 shadow">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-blue-50 rounded-lg">
-              <Package2 className="h-6 w-6 text-blue-600" />
+              <Package2 className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <p className="text-gray-500">Total Products</p>
+              <p className="text-sm font-medium text-gray-600">Total Products</p>
               <p className="text-2xl font-semibold">{stats.totalProducts}</p>
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-lg">
+        <div className="bg-white rounded-lg p-6 shadow">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-green-50 rounded-lg">
-              <ShoppingCart className="h-6 w-6 text-green-600" />
+              <ShoppingCart className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <p className="text-gray-500">Total Orders</p>
+              <p className="text-sm font-medium text-gray-600">Total Orders</p>
               <p className="text-2xl font-semibold">{stats.totalOrders}</p>
             </div>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-lg">
+        <div className="bg-white rounded-lg p-6 shadow">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-purple-50 rounded-lg">
-              <TrendingUp className="h-6 w-6 text-purple-600" />
+              <TrendingUp className="w-6 h-6 text-purple-600" />
             </div>
             <div>
-              <p className="text-gray-500">Total Revenue</p>
+              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-semibold">₹{Number(stats.totalRevenue).toLocaleString('en-IN')}</p>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Orders Section */}
-      <div className="mt-8">
-        <div className="space-y-4">
-          {recentOrders.map((order) => (
-            <div key={order.id} className="bg-white p-6 rounded-lg shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-medium">Order #{order.id.slice(0, 8)}</h3>
-                  <p className="text-sm text-gray-500">
-                    {format(new Date(order.created_at), 'MMM d, yyyy h:mm a')}
-                  </p>
-                  <p className="text-sm font-medium mt-1">
-                    Restaurant: {order.restaurant?.business_name}
-                  </p>
-                </div>
-                <Badge
-                  className={
-                    order.status === 'completed'
-                      ? 'bg-green-100 text-green-800'
-                      : order.status === 'cancelled'
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-blue-100 text-blue-800'
-                  }
-                >
-                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
-                </Badge>
-              </div>
-
-              {/* Order Items */}
-              <div className="space-y-3">
-                {order.order_items?.map((item) => (
-                  <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                    <div>
-                      <p className="font-medium">{item.products?.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {item.quantity} × ₹{Number(item.unit_price).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                    <p className="font-medium">
-                      ₹{(Number(item.quantity) * Number(item.unit_price)).toLocaleString('en-IN')}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Order Total and Delivery Address */}
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between items-center mb-4">
-                  <p className="font-medium">Total Amount</p>
-                  <p className="font-medium text-lg">
-                    ₹{Number(order.total_amount).toLocaleString('en-IN')}
-                  </p>
-                </div>
-                {order.shipping_address && (
-                  <div className="text-sm text-gray-600">
-                    <p className="font-medium mb-1">Delivery Address:</p>
-                    <p>{order.shipping_address.address}</p>
-                    <p>
-                      {order.shipping_address.city}, {order.shipping_address.state} {order.shipping_address.pincode}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Action Buttons */}
-              {order.status === 'processing' && (
-                <div className="mt-4 flex gap-3">
-                  <Button
-                    onClick={() => handleStatusUpdate(order.id, 'completed')}
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    Mark as Completed
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleStatusUpdate(order.id, 'cancelled')}
-                    className="text-red-600 border-red-600 hover:bg-red-50"
-                  >
-                    Cancel Order
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
         </div>
       </div>
 
@@ -649,21 +544,100 @@ export function SupplierDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProducts.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onEdit={() => handleEdit(product)}
-              onDelete={() => handleDelete(product)}
-            />
+            <div key={product.id} className="overflow-hidden">
+              <div className="relative aspect-square">
+                {product.image_url ? (
+                  <img 
+                    src={product.image_url} 
+                    alt={product.name} 
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center bg-muted">
+                    <Package2 className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <div className="p-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold">{product.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {product.description}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setEditingProduct(product)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span className="sr-only">Edit</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setProductToDelete(product);
+                        setIsDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-2 space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Price:</span>
+                    <span className="font-medium">₹{product.price}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Unit:</span>
+                    <span className="font-medium">{product.unit}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Category:</span>
+                    <span className="font-medium">{product.category}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Stock:</span>
+                    <span className="font-medium">{product.stock_quantity} {product.unit}s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Product</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{productToDelete?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteProduct}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Product Modal */}
       <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Product</DialogTitle>
+            <DialogDescription>Update your product details below.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
@@ -671,7 +645,7 @@ export function SupplierDashboard() {
               <Input
                 value={editForm.name}
                 onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                placeholder="Product name"
+                placeholder="Enter product name (e.g., Fresh Tomatoes)"
               />
             </div>
             <div className="space-y-2">
@@ -679,7 +653,7 @@ export function SupplierDashboard() {
               <Input
                 value={editForm.description}
                 onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                placeholder="Product description"
+                placeholder="Brief description of your product"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -689,7 +663,9 @@ export function SupplierDashboard() {
                   type="number"
                   value={editForm.price}
                   onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                  placeholder="Price"
+                  placeholder="Enter price in ₹"
+                  min="0"
+                  step="0.01"
                 />
               </div>
               <div className="space-y-2">
@@ -697,18 +673,26 @@ export function SupplierDashboard() {
                 <Input
                   value={editForm.unit}
                   onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
-                  placeholder="Unit (e.g., kg, piece)"
+                  placeholder="e.g., kg, piece, dozen"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Category</label>
-                <Input
+                <select
                   value={editForm.category}
                   onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                  placeholder="Category"
-                />
+                  className="w-full px-3 py-2 border rounded-md"
+                  required
+                >
+                  <option value="">Select food category...</option>
+                  {FOOD_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Stock Quantity</label>
@@ -716,7 +700,10 @@ export function SupplierDashboard() {
                   type="number"
                   value={editForm.stock_quantity}
                   onChange={(e) => setEditForm({ ...editForm, stock_quantity: e.target.value })}
-                  placeholder="Stock quantity"
+                  placeholder="Available quantity"
+                  required
+                  min="0"
+                  step="1"
                 />
               </div>
             </div>
@@ -742,7 +729,7 @@ export function SupplierDashboard() {
                     }}
                     className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="text-xs text-gray-500">
                     Upload a new image or keep the existing one
                   </p>
                 </div>
@@ -755,93 +742,6 @@ export function SupplierDashboard() {
             </Button>
             <Button onClick={handleSaveEdit}>
               Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add Product Modal */}
-      <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Product</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
-              <Input
-                value={newProductForm.name}
-                onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })}
-                placeholder="Product name"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
-              <Input
-                value={newProductForm.description}
-                onChange={(e) => setNewProductForm({ ...newProductForm, description: e.target.value })}
-                placeholder="Product description"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Price</label>
-                <Input
-                  type="number"
-                  value={newProductForm.price}
-                  onChange={(e) => setNewProductForm({ ...newProductForm, price: e.target.value })}
-                  placeholder="Price"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Unit</label>
-                <Input
-                  value={newProductForm.unit}
-                  onChange={(e) => setNewProductForm({ ...newProductForm, unit: e.target.value })}
-                  placeholder="Unit (e.g., kg, piece)"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Category</label>
-                <Input
-                  value={newProductForm.category}
-                  onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
-                  placeholder="Category"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Stock Quantity</label>
-                <Input
-                  type="number"
-                  value={newProductForm.stock_quantity}
-                  onChange={(e) => setNewProductForm({ ...newProductForm, stock_quantity: e.target.value })}
-                  placeholder="Stock quantity"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Product Image</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    setNewProductForm({ ...newProductForm, image: file });
-                  }
-                }}
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddingProduct(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddProduct}>
-              Add Product
             </Button>
           </DialogFooter>
         </DialogContent>

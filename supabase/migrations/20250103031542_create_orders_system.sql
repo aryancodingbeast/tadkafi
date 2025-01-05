@@ -83,34 +83,88 @@ create table if not exists orders (
   total_amount decimal not null,
   shipping_address jsonb not null,
   status order_status not null default 'pending',
+  payment_status text not null default 'pending',
+  payment_method text not null default 'online',
   version integer not null default 1,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now(),
   constraint ensure_supplier_exists_check check (supplier_id = ensure_supplier_exists(supplier_id))
 );
 
--- Enable RLS on orders table
+-- Drop existing policies
+drop policy if exists "Users can view their own orders" on orders;
+drop policy if exists "Users can create their own orders" on orders;
+drop policy if exists "Users can update payment status" on orders;
+drop policy if exists "Suppliers can update order status" on orders;
+
+-- Enable RLS
 alter table orders enable row level security;
 
--- Policy for users to view their own orders
+-- Create all policies
 create policy "Users can view their own orders"
   on orders for select
-  using (auth.uid() = user_id);
+  to authenticated
+  using (
+    auth.uid() = user_id or 
+    auth.uid() in (
+      select id from suppliers where id = supplier_id
+    )
+  );
 
--- Policy for suppliers to view orders assigned to them
-create policy "Suppliers can view orders assigned to them"
-  on orders for select
-  using (auth.uid() = supplier_id);
-
--- Policy for users to create their own orders
 create policy "Users can create their own orders"
   on orders for insert
+  to authenticated
   with check (auth.uid() = user_id);
 
--- Policy for suppliers to update orders assigned to them
-create policy "Suppliers can update their assigned orders"
+create policy "Users can update payment status"
   on orders for update
-  using (auth.uid() = supplier_id);
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (
+    auth.uid() = user_id and
+    payment_status is not null
+  );
+
+create policy "Suppliers can update order status"
+  on orders for update
+  to authenticated
+  using (auth.uid() in (select id from suppliers where id = supplier_id))
+  with check (
+    auth.uid() in (select id from suppliers where id = supplier_id) and
+    status is not null
+  );
+
+-- Enable realtime
+alter table orders replica identity full;
+
+-- Create notification function
+create or replace function notify_order_changes()
+returns trigger as $$
+begin
+  if (TG_OP = 'UPDATE') then
+    if (NEW.status is distinct from OLD.status or NEW.payment_status is distinct from OLD.payment_status) then
+      perform pg_notify(
+        'order_status_change',
+        json_build_object(
+          'id', NEW.id,
+          'status', NEW.status,
+          'payment_status', NEW.payment_status,
+          'user_id', NEW.user_id,
+          'supplier_id', NEW.supplier_id
+        )::text
+      );
+    end if;
+  end if;
+  return NEW;
+end;
+$$ language plpgsql;
+
+-- Create trigger
+drop trigger if exists on_order_change on orders;
+create trigger on_order_change
+  after update on orders
+  for each row
+  execute function notify_order_changes();
 
 -- Create order items table
 create table if not exists order_items (
@@ -542,6 +596,29 @@ begin
 end;
 $$;
 
+-- Update supplier_order_stats view
+create or replace view supplier_order_stats as
+select
+  s.id as supplier_id,
+  s.name as supplier_name,
+  (select count(*) from products where supplier_id = s.id) as total_products,
+  count(distinct o.id) filter (where o.status = 'pending') as pending_orders,
+  count(distinct o.id) filter (where o.status = 'processing') as processing_orders,
+  count(distinct o.id) filter (where o.status = 'completed') as completed_orders,
+  count(distinct o.id) filter (where o.status = 'cancelled') as cancelled_orders,
+  count(distinct o.id) as total_orders,
+  coalesce(sum(o.total_amount) filter (where o.status = 'completed' and o.payment_status = 'completed'), 0) as total_revenue
+from
+  suppliers s
+  left join orders o on s.id = o.supplier_id
+group by
+  s.id,
+  s.name;
+
+-- Grant access to the view and enable realtime
+grant select on supplier_order_stats to authenticated;
+alter publication supabase_realtime add table orders;
+
 -- Insert test users if they don't exist
 insert into auth.users (id, email, encrypted_password, email_confirmed_at, created_at, updated_at)
 select 
@@ -643,39 +720,3 @@ insert into order_items (
   300.00,
   1500.00
 );
-
--- Create view for supplier order stats
-create or replace view supplier_order_stats as
-with order_counts as (
-  select
-    supplier_id,
-    count(*) filter (where status = 'pending') as pending_orders,
-    count(*) filter (where status = 'processing') as processing_orders,
-    count(*) filter (where status = 'cancelled') as cancelled_orders,
-    count(*) as total_orders
-  from orders
-  group by supplier_id
-),
-order_revenue as (
-  select
-    o.supplier_id,
-    sum(o.total_amount) filter (where o.status = 'processing') as processing_revenue,
-    sum(o.total_amount) as total_revenue
-  from orders o
-  group by o.supplier_id
-)
-select
-  s.id as supplier_id,
-  s.name as supplier_name,
-  coalesce(oc.pending_orders, 0) as pending_orders,
-  coalesce(oc.processing_orders, 0) as processing_orders,
-  coalesce(oc.cancelled_orders, 0) as cancelled_orders,
-  coalesce(oc.total_orders, 0) as total_orders,
-  coalesce(rev.processing_revenue, 0) as processing_revenue,
-  coalesce(rev.total_revenue, 0) as total_revenue
-from suppliers s
-left join order_counts oc on s.id = oc.supplier_id
-left join order_revenue rev on s.id = rev.supplier_id;
-
--- Grant access to the view
-grant select on supplier_order_stats to authenticated;

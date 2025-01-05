@@ -13,7 +13,6 @@ export interface ShippingAddress {
 }
 
 export interface CreateOrderParams {
-  restaurant_id: string;
   supplier_id: string;
   total_amount: number;
   shipping_address: ShippingAddress;
@@ -45,18 +44,17 @@ export async function createOrder(
 
     console.log('Current user:', user.id);
 
-    // Create the order - supplier will be created automatically by the check constraint
+    // Create the order
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
         user_id: user.id,
-        restaurant_id: params.restaurant_id,
         supplier_id: params.supplier_id,
         total_amount: params.total_amount,
         shipping_address: params.shipping_address,
         status: 'pending',
         payment_method: params.payment_method,
-        payment_status: 'pending' // Always start as pending
+        payment_status: 'pending'
       })
       .select()
       .single();
@@ -180,20 +178,57 @@ export async function updateOrderPaymentStatus(
 ): Promise<void> {
   console.log(`[updateOrderPaymentStatus] Starting update for order ${orderId} to ${status}`);
   
-  const { data, error } = await supabase
+  // First check if order exists
+  const { data: existingOrder, error: checkError } = await supabase
+    .from('orders')
+    .select('id, status, payment_status')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (checkError) {
+    console.error('[updateOrderPaymentStatus] Error checking order:', checkError);
+    throw checkError;
+  }
+
+  if (!existingOrder) {
+    console.error('[updateOrderPaymentStatus] Order not found:', orderId);
+    throw new Error(`Order ${orderId} not found`);
+  }
+
+  console.log('[updateOrderPaymentStatus] Found existing order:', existingOrder);
+
+  // Perform the update
+  const { error: updateError } = await supabase
     .from('orders')
     .update({ 
       payment_status: status,
       updated_at: new Date().toISOString()
     })
-    .eq('id', orderId)
-    .select()
-    .single();
+    .eq('id', orderId);
 
-  if (error) {
-    console.error('[updateOrderPaymentStatus] Error:', error);
-    throw error;
+  if (updateError) {
+    console.error('[updateOrderPaymentStatus] Update error:', updateError);
+    throw updateError;
   }
 
-  console.log('[updateOrderPaymentStatus] Successfully updated order:', data);
+  // Refresh the stats
+  const { error: refreshError } = await supabase.rpc('manual_refresh_supplier_stats');
+  if (refreshError) {
+    console.error('[updateOrderPaymentStatus] Error refreshing stats:', refreshError);
+    // Don't throw here, just log the error since the payment status was updated successfully
+  }
+
+  // Fetch the updated order
+  const { data: updatedOrder, error: fetchError } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (fetchError || !updatedOrder) {
+    console.error('[updateOrderPaymentStatus] Error fetching updated order:', fetchError);
+    throw fetchError || new Error('Failed to fetch updated order');
+  }
+
+  console.log('[updateOrderPaymentStatus] Successfully updated order:', updatedOrder);
 }

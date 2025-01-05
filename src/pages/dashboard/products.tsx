@@ -1,50 +1,51 @@
 import { useState, useEffect } from 'react';
-import { useSupabase } from '@/lib/supabase';
+import { useSupabase } from '@/lib/supabase-context';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Package2, Plus, Search, X } from 'lucide-react';
+import { Package2, Search, ShoppingCart, Plus, Minus } from 'lucide-react';
 import type { Product } from '@/lib/database.types';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { FOOD_CATEGORIES } from '@/lib/constants';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useCart } from '@/lib/cart-context';
+import { toast } from 'react-hot-toast';
 
 export function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    description: '',
-    price: '',
-    image: null as File | null
-  });
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
   const { supabase } = useSupabase();
-  const { user } = useAuthStore();
+  const { addToCart } = useCart();
+  const [addingToCart, setAddingToCart] = useState<{ [key: string]: boolean }>({});
 
   useEffect(() => {
-    if (user) {
-      loadProducts();
-    }
-  }, [user]);
+    loadProducts();
+  }, []);
 
   const loadProducts = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('products')
-        .select('*')
-        .eq('supplier_id', user?.id);
+        .select('*, profiles(business_name)')
+        .gt('stock_quantity', 0);
 
       if (error) throw error;
+      
+      // Initialize quantities
+      const initialQuantities = data?.reduce((acc, product) => {
+        acc[product.id] = 1;
+        return acc;
+      }, {} as { [key: string]: number }) || {};
+      
+      setQuantities(initialQuantities);
       setProducts(data || []);
     } catch (error) {
       console.error('Error loading products:', error);
@@ -54,42 +55,35 @@ export function ProductsPage() {
     }
   };
 
-  const handleAddProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleQuantityChange = (productId: string, delta: number) => {
+    setQuantities(prev => {
+      const currentQty = prev[productId] || 1;
+      const product = products.find(p => p.id === productId);
+      const newQty = Math.max(1, Math.min(currentQty + delta, product?.stock_quantity || 1));
+      return { ...prev, [productId]: newQty };
+    });
+  };
+
+  const handleAddToCart = async (product: Product) => {
+    const quantity = quantities[product.id] || 1;
+    setAddingToCart(prev => ({ ...prev, [product.id]: true }));
+    
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .insert([
-          {
-            name: newProduct.name,
-            description: newProduct.description,
-            price: parseFloat(newProduct.price),
-            supplier_id: user?.id,
-          },
-        ])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      setProducts([...products, data]);
-      setShowAddDialog(false);
-      setNewProduct({
-        name: '',
-        description: '',
-        price: '',
-        image: null,
-      });
+      await addToCart(product.id, quantity);
     } catch (error) {
-      console.error('Error adding product:', error);
-      alert('Failed to add product. Please try again.');
+      console.error('Error adding to cart:', error);
+      toast.error('Failed to add to cart');
+    } finally {
+      setAddingToCart(prev => ({ ...prev, [product.id]: false }));
     }
   };
 
   const filteredProducts = products.filter(
     (product) =>
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       product.category?.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (!selectedCategory || product.category === selectedCategory)
   );
 
   if (loading) {
@@ -101,112 +95,146 @@ export function ProductsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-          <p className="text-gray-500">Manage your product catalog</p>
-        </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Product
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
-              <DialogDescription>
-                Add a new product to your catalog. Click save when you're done.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleAddProduct}>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    value={newProduct.name}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, name: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    value={newProduct.description}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, description: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="price">Price</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={newProduct.price}
-                    onChange={(e) =>
-                      setNewProduct({ ...newProduct, price: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit">Save Product</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+    <div className="container mx-auto py-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Products</h1>
+        <p className="text-gray-500">Browse all available products</p>
       </div>
 
       <div className="flex items-center space-x-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
           <Input
-            placeholder="Search products..."
+            placeholder="Search products by name, description, or category..."
             type="search"
             className="pl-8"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={categoryOpen}
+              className="w-[200px] justify-between"
+            >
+              {selectedCategory || "All Categories"}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[200px] p-0">
+            <Command>
+              <CommandInput placeholder="Search category..." />
+              <CommandEmpty>No category found.</CommandEmpty>
+              <CommandGroup>
+                <CommandItem
+                  onSelect={() => {
+                    setSelectedCategory('');
+                    setCategoryOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      !selectedCategory ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  All Categories
+                </CommandItem>
+                {FOOD_CATEGORIES.map((category) => (
+                  <CommandItem
+                    key={category}
+                    onSelect={() => {
+                      setSelectedCategory(category);
+                      setCategoryOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        selectedCategory === category ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {category}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filteredProducts.map((product) => (
           <div
             key={product.id}
-            className="rounded-lg border bg-white p-4 shadow-sm"
+            className="group relative overflow-hidden rounded-lg border bg-white p-6 shadow-sm transition-all hover:shadow-md"
           >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="font-semibold">{product.name}</h3>
-                <p className="text-sm text-gray-500">{product.description}</p>
-                <p className="mt-2 font-medium">₹{product.price.toFixed(2)}</p>
+            <div className="flex flex-col h-full">
+              <div className="flex-1">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg">{product.name}</h3>
+                    <p className="text-sm text-gray-500 mt-1">{product.description}</p>
+                  </div>
+                  <Package2 className="h-5 w-5 text-gray-400" />
+                </div>
+                <div className="mt-2 space-y-1">
+                  <p className="text-sm text-gray-400">{product.category}</p>
+                  <p className="text-sm text-blue-500">
+                    {(product.profiles as any)?.business_name}
+                  </p>
+                </div>
               </div>
-              <Package2 className="h-5 w-5 text-gray-400" />
+              
+              <div className="mt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-semibold">₹{product.price.toFixed(2)}</p>
+                  <p className="text-sm text-gray-500">{product.stock_quantity} in stock</p>
+                </div>
+                
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center border rounded-md">
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleQuantityChange(product.id, -1)}
+                      disabled={addingToCart[product.id]}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="w-12 text-center">{quantities[product.id] || 1}</span>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleQuantityChange(product.id, 1)}
+                      disabled={addingToCart[product.id]}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <Button 
+                    className="flex-1"
+                    onClick={() => handleAddToCart(product)}
+                    disabled={addingToCart[product.id]}
+                  >
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    {addingToCart[product.id] ? 'Adding...' : 'Add to Cart'}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {filteredProducts.length === 0 && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-          <Package2 className="h-8 w-8 text-gray-400" />
-          <h3 className="mt-2 text-sm font-semibold">No products found</h3>
-          <p className="text-sm text-gray-500">
-            {searchQuery
-              ? "No products match your search"
-              : "Get started by adding a product"}
-          </p>
+        <div className="text-center py-12">
+          <p className="text-gray-500">No products found</p>
         </div>
       )}
     </div>

@@ -3,8 +3,24 @@ import { useParams } from 'react-router-dom';
 import { useSupabase } from '@/lib/supabase-context';
 import { ProductCard } from '@/components/product-card';
 import { Input } from '@/components/ui/input';
-import { ShoppingBag, Search, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ShoppingBag, Search, X, Plus, ChevronsUpDown, Check } from 'lucide-react';
 import type { Product } from '@/lib/database.types';
+import { FOOD_CATEGORIES } from '@/lib/constants';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { toast } from 'react-hot-toast';
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 export function SupplierProductsPage() {
   const { supplierId } = useParams();
@@ -13,6 +29,16 @@ export function SupplierProductsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [supplierName, setSupplierName] = useState('');
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [newProduct, setNewProduct] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category: '',
+    stock_quantity: '',
+    image_url: ''
+  });
 
   useEffect(() => {
     fetchSupplierDetails();
@@ -57,10 +83,48 @@ export function SupplierProductsPage() {
     }
   };
 
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .insert([
+          {
+            name: newProduct.name,
+            description: newProduct.description,
+            price: parseFloat(newProduct.price),
+            category: newProduct.category,
+            stock_quantity: parseInt(newProduct.stock_quantity),
+            supplier_id: supplierId,
+            image_url: newProduct.image_url
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setProducts([...products, data]);
+      setShowAddDialog(false);
+      setNewProduct({
+        name: '',
+        description: '',
+        price: '',
+        category: '',
+        stock_quantity: '',
+        image_url: ''
+      });
+      toast.success('Product added successfully');
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.error('Failed to add product');
+    }
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.category.toLowerCase().includes(searchQuery.toLowerCase())
+    product.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    product.category?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -71,8 +135,131 @@ export function SupplierProductsPage() {
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{supplierName}</h1>
-              <p className="text-gray-600 mt-1">Browse available products</p>
+              <p className="text-gray-600 mt-1">Manage your products</p>
             </div>
+            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Product
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Product</DialogTitle>
+                  <DialogDescription>
+                    Add a new product to your catalog. Click save when you're done.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAddProduct}>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <label htmlFor="name">Name</label>
+                      <Input
+                        id="name"
+                        value={newProduct.name}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, name: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="description">Description</label>
+                      <Input
+                        id="description"
+                        value={newProduct.description}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, description: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="category">Category</label>
+                      <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={categoryOpen}
+                            className="w-full justify-between"
+                          >
+                            {newProduct.category || "Select category..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0">
+                          <Command>
+                            <CommandInput placeholder="Search category..." />
+                            <CommandEmpty>No category found.</CommandEmpty>
+                            <CommandGroup>
+                              {FOOD_CATEGORIES.map((category) => (
+                                <CommandItem
+                                  key={category}
+                                  onSelect={() => {
+                                    setNewProduct({ ...newProduct, category });
+                                    setCategoryOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      newProduct.category === category ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {category}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="price">Price</label>
+                      <Input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        value={newProduct.price}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, price: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="stock_quantity">Stock Quantity</label>
+                      <Input
+                        id="stock_quantity"
+                        type="number"
+                        value={newProduct.stock_quantity}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, stock_quantity: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="image_url">Image URL</label>
+                      <Input
+                        id="image_url"
+                        type="url"
+                        value={newProduct.image_url}
+                        onChange={(e) =>
+                          setNewProduct({ ...newProduct, image_url: e.target.value })
+                        }
+                        placeholder="https://example.com/image.jpg"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit">Save Product</Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -117,7 +304,7 @@ export function SupplierProductsPage() {
               <p className="mt-2 text-gray-600">
                 {searchQuery
                   ? "We couldn't find any products matching your criteria."
-                  : "This supplier hasn't added any products yet."}
+                  : "Start by adding some products to your catalog."}
               </p>
             </div>
           )}

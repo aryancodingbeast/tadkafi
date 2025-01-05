@@ -9,6 +9,7 @@ import { RestaurantDashboard } from './pages/dashboard/restaurant';
 import { SupplierDashboard } from './pages/dashboard/supplier';
 import { SupplierProductsPage } from './pages/supplier/products';
 import { SupplierNotificationsPage } from './pages/supplier/notifications';
+import { ProductsPage } from './pages/dashboard/products';
 import { CheckoutPage } from './pages/checkout';
 import { OrdersPage } from './pages/orders';
 import { SupabaseProvider } from './lib/supabase-context';
@@ -89,6 +90,16 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <DashboardRoute />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/products"
+                element={
+                  <ProtectedRoute>
+                    <RestaurantOnlyRoute>
+                      <ProductsPage />
+                    </RestaurantOnlyRoute>
                   </ProtectedRoute>
                 }
               />

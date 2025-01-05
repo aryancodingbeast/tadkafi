@@ -45,7 +45,6 @@ export function CheckoutPage() {
 
       // Create order using the new service
       const { orderId } = await createOrder(supabase, {
-        restaurant_id: items[0].restaurant_id, // Add restaurant_id
         supplier_id: items[0].supplier_id,
         total_amount: total,
         shipping_address: {
