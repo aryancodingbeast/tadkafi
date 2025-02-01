@@ -79,6 +79,7 @@ function StatsCard({ title, value, icon: Icon }: { title: string; value: string 
 
 export function SupplierDashboard() {
   const { supabase } = useSupabase();
+  const { profile } = useAuthStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingProduct, setIsAddingProduct] = useState(false);
@@ -406,118 +407,120 @@ export function SupplierDashboard() {
               View Notifications
             </Button>
           </Link>
-          <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Product
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Product</DialogTitle>
-                <DialogDescription>Fill in the product details below. All fields are required.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddProduct}>
-                <div className="grid gap-4 py-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Name</label>
-                    <Input
-                      value={newProductForm.name}
-                      onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })}
-                      placeholder="Enter product name (e.g., Fresh Tomatoes)"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Description</label>
-                    <Input
-                      value={newProductForm.description}
-                      onChange={(e) => setNewProductForm({ ...newProductForm, description: e.target.value })}
-                      placeholder="Brief description of your product"
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+          {profile?.type === 'supplier' && (
+            <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Product
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add New Product</DialogTitle>
+                  <DialogDescription>Fill in the product details below. All fields are required.</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAddProduct}>
+                  <div className="grid gap-4 py-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Price</label>
+                      <label className="text-sm font-medium">Name</label>
                       <Input
-                        type="number"
-                        value={newProductForm.price}
-                        onChange={(e) => setNewProductForm({ ...newProductForm, price: e.target.value })}
-                        placeholder="Enter price in ₹"
+                        value={newProductForm.name}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, name: e.target.value })}
+                        placeholder="Enter product name (e.g., Fresh Tomatoes)"
                         required
-                        min="0"
-                        step="0.01"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Unit</label>
+                      <label className="text-sm font-medium">Description</label>
                       <Input
-                        value={newProductForm.unit}
-                        onChange={(e) => setNewProductForm({ ...newProductForm, unit: e.target.value })}
-                        placeholder="e.g., kg, piece, dozen"
+                        value={newProductForm.description}
+                        onChange={(e) => setNewProductForm({ ...newProductForm, description: e.target.value })}
+                        placeholder="Brief description of your product"
                         required
                       />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Category</label>
-                      <select
-                        value={newProductForm.category}
-                        onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-md"
-                        required
-                      >
-                        <option value="">Select food category...</option>
-                        {FOOD_CATEGORIES.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Price</label>
+                        <Input
+                          type="number"
+                          value={newProductForm.price}
+                          onChange={(e) => setNewProductForm({ ...newProductForm, price: e.target.value })}
+                          placeholder="Enter price in ₹"
+                          required
+                          min="0"
+                          step="0.01"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Unit</label>
+                        <Input
+                          value={newProductForm.unit}
+                          onChange={(e) => setNewProductForm({ ...newProductForm, unit: e.target.value })}
+                          placeholder="e.g., kg, piece, dozen"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Category</label>
+                        <select
+                          value={newProductForm.category}
+                          onChange={(e) => setNewProductForm({ ...newProductForm, category: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-md"
+                          required
+                        >
+                          <option value="">Select food category...</option>
+                          {FOOD_CATEGORIES.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Stock Quantity</label>
+                        <Input
+                          type="number"
+                          value={newProductForm.stock_quantity}
+                          onChange={(e) => setNewProductForm({ ...newProductForm, stock_quantity: e.target.value })}
+                          placeholder="Available quantity"
+                          required
+                          min="0"
+                          step="1"
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Stock Quantity</label>
-                      <Input
-                        type="number"
-                        value={newProductForm.stock_quantity}
-                        onChange={(e) => setNewProductForm({ ...newProductForm, stock_quantity: e.target.value })}
-                        placeholder="Available quantity"
-                        required
-                        min="0"
-                        step="1"
+                      <label className="text-sm font-medium">Product Image</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setNewProductForm({ ...newProductForm, image: file });
+                          }
+                        }}
+                        className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                       />
+                      <p className="text-xs text-gray-500">Upload a clear image of your product</p>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Product Image</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setNewProductForm({ ...newProductForm, image: file });
-                        }
-                      }}
-                      className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                    />
-                    <p className="text-xs text-gray-500">Upload a clear image of your product</p>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAddingProduct(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    Add Product
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsAddingProduct(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit">
+                      Add Product
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
@@ -561,17 +564,13 @@ export function SupplierDashboard() {
       {/* Products Section */}
       <div className="mt-12">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Your Products</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-64"
-            />
-          </div>
+          <h2 className="text-2xl font-bold tracking-tight">Products</h2>
+          {profile?.type === 'supplier' && (
+            <Button onClick={() => setIsAddingProduct(true)} className="flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              Add Product
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
