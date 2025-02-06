@@ -9,7 +9,7 @@ import { useUnpaidOrdersStore } from '@/store/unpaidOrders';
 import { useSupabase } from '@/lib/supabase-context';
 import { useEffect } from 'react';
 import { getUnseenNotificationCount, subscribeToNotifications } from '@/services/notificationService';
-import tadkafLogo from '@/assets/tadkaf-logo.png';
+import navBg from '@/assets/nav-bg.jpg';
 
 export function Navbar() {
   const navigate = useNavigate();
@@ -95,170 +95,168 @@ export function Navbar() {
   const isRestaurant = profile?.type === 'restaurant';
 
   return (
-    <nav className="bg-white shadow-sm">
+    <nav 
+      className="shadow-md relative"
+      style={{
+        background: `url(${navBg}) center/cover no-repeat`,
+        backgroundBlendMode: 'soft-light',
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
-              <img 
-                src={tadkafLogo} 
-                alt="Tadkaf Logo" 
-                className="h-10 w-auto"
-              />
+              <span 
+                className="text-2xl font-semibold tracking-wider transition-all duration-300 hover:opacity-90"
+                style={{
+                  color: 'white',
+                  textShadow: '1px 1px 2px rgba(0, 0, 0, 0.1)',
+                  letterSpacing: '0.15em',
+                  fontFamily: "'Montserrat', sans-serif",
+                }}
+              >
+                TADKAF!
+              </span>
             </Link>
           </div>
 
-          {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-4">
-            {isRestaurant && <CartMenu />}
             {user ? (
               <>
-                <Button
-                  variant="ghost"
-                  onClick={() => navigate('/dashboard')}
-                >
-                  Dashboard
-                </Button>
+                <Link to="/dashboard">
+                  <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
+                    Dashboard
+                  </Button>
+                </Link>
                 {isRestaurant && (
                   <>
-                    <Button variant="ghost" onClick={() => navigate('/products')}>
-                      Products
-                    </Button>
-                    <Button variant="ghost" onClick={() => navigate('/orders')} className="relative">
-                      Orders
-                      {unpaidOrdersCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                          {unpaidOrdersCount}
-                        </span>
-                      )}
-                    </Button>
+                    <Link to="/products">
+                      <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
+                        Products
+                      </Button>
+                    </Link>
+                    <Link to="/orders">
+                      <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB] relative">
+                        Orders
+                        {unpaidOrdersCount > 0 && (
+                          <span className="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
+                            {unpaidOrdersCount}
+                          </span>
+                        )}
+                      </Button>
+                    </Link>
+                    <CartMenu />
                   </>
                 )}
                 {profile?.type === 'supplier' && (
-                  <Link to="/supplier/notifications" className="relative">
-                    <Bell className="h-5 w-5 text-gray-600 hover:text-gray-800" />
-                    {notificationCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                        {notificationCount}
-                      </span>
-                    )}
+                  <Link to="/supplier/notifications">
+                    <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
+                      Notifications
+                      {notificationCount > 0 && (
+                        <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                          {notificationCount}
+                        </span>
+                      )}
+                    </Button>
                   </Link>
                 )}
-                <Button variant="outline" onClick={handleSignOut}>
+                <Button 
+                  variant="ghost" 
+                  onClick={handleSignOut}
+                  className="text-white hover:text-white hover:bg-[#98BFDB]"
+                >
                   Sign Out
                 </Button>
               </>
             ) : (
-              <>
-                <Button variant="ghost" onClick={() => navigate('/register')}>
-                  Register
-                </Button>
-                <Button onClick={() => navigate('/login')}>
+              <Link to="/login">
+                <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
                   <LogIn className="h-5 w-5 mr-2" />
                   Sign In
                 </Button>
-              </>
+              </Link>
             )}
           </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center">
-            {isRestaurant && <CartMenu />}
-            <Button
-              variant="ghost"
-              size="icon"
+          <div className="flex md:hidden">
+            <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="ml-2"
+              className="text-white hover:text-white hover:bg-[#98BFDB] p-2 rounded-md"
             >
               {isMenuOpen ? (
                 <X className="h-6 w-6" />
               ) : (
                 <Menu className="h-6 w-6" />
               )}
-            </Button>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t">
+        <div 
+          className="md:hidden"
+          style={{
+            background: `url(${navBg}) center/cover no-repeat`,
+            backgroundBlendMode: 'soft-light',
+            filter: 'brightness(0.95)',
+          }}
+        >
           <div className="px-2 pt-2 pb-3 space-y-1">
             {user ? (
               <>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    navigate('/dashboard');
-                    setIsMenuOpen(false);
-                  }}
-                >
-                  Dashboard
-                </Button>
+                <Link to="/dashboard">
+                  <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
+                    Dashboard
+                  </Button>
+                </Link>
                 {isRestaurant && (
                   <>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        navigate('/products');
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      Products
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-start relative"
-                      onClick={() => {
-                        navigate('/orders');
-                        setIsMenuOpen(false);
-                      }}
-                    >
-                      Orders
-                      {unpaidOrdersCount > 0 && (
-                        <span className="absolute top-2 right-2 bg-yellow-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                          {unpaidOrdersCount}
+                    <Link to="/products">
+                      <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
+                        Products
+                      </Button>
+                    </Link>
+                    <Link to="/orders">
+                      <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB] relative">
+                        Orders
+                        {unpaidOrdersCount > 0 && (
+                          <span className="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
+                            {unpaidOrdersCount}
+                          </span>
+                        )}
+                      </Button>
+                    </Link>
+                  </>
+                )}
+                {profile?.type === 'supplier' && (
+                  <Link to="/supplier/notifications">
+                    <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
+                      Notifications
+                      {notificationCount > 0 && (
+                        <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                          {notificationCount}
                         </span>
                       )}
                     </Button>
-                  </>
+                  </Link>
                 )}
-                <Button
-                  variant="outline"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    handleSignOut();
-                    setIsMenuOpen(false);
-                  }}
+                <Button 
+                  variant="ghost" 
+                  onClick={handleSignOut}
+                  className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]"
                 >
                   Sign Out
                 </Button>
               </>
             ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    navigate('/register');
-                    setIsMenuOpen(false);
-                  }}
-                >
-                  Register
-                </Button>
-                <Button
-                  className="w-full justify-start"
-                  onClick={() => {
-                    navigate('/login');
-                    setIsMenuOpen(false);
-                  }}
-                >
+              <Link to="/login">
+                <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
                   <LogIn className="h-5 w-5 mr-2" />
                   Sign In
                 </Button>
-              </>
+              </Link>
             )}
           </div>
         </div>
