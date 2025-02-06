@@ -110,7 +110,7 @@ export function Navbar() {
                 className="text-2xl font-semibold tracking-wider transition-all duration-300 hover:opacity-90"
                 style={{
                   color: 'white',
-                  textShadow: '1px 1px 2px rgba(0, 0, 0, 0.1)',
+                  textShadow: '1px 1px 3px rgba(0, 0, 0, 0.15)',
                   letterSpacing: '0.15em',
                   fontFamily: "'Montserrat', sans-serif",
                 }}
