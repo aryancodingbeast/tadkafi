@@ -9,6 +9,7 @@ import { useUnpaidOrdersStore } from '@/store/unpaidOrders';
 import { useSupabase } from '@/lib/supabase-context';
 import { useEffect } from 'react';
 import { getUnseenNotificationCount, subscribeToNotifications } from '@/services/notificationService';
+import tadkafLogo from '@/assets/tadkaf-logo.png';
 
 export function Navbar() {
   const navigate = useNavigate();
@@ -99,10 +100,11 @@ export function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
-              <Store className="h-6 w-6 text-blue-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900">
-                Tadkafi
-              </span>
+              <img 
+                src={tadkafLogo} 
+                alt="Tadkaf Logo" 
+                className="h-10 w-auto"
+              />
             </Link>
           </div>
 
