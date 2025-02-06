@@ -107,10 +107,10 @@ export function Navbar() {
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
               <span 
-                className="text-2xl font-semibold tracking-wider transition-all duration-300 hover:opacity-90"
+                className="text-2xl font-semibold tracking-wider transition-all duration-300 hover:opacity-90 hover:scale-105"
                 style={{
                   color: 'white',
-                  textShadow: '1px 1px 3px rgba(0, 0, 0, 0.15)',
+                  textShadow: '1px 1px 3px rgba(0, 0, 0, 0.2)',
                   letterSpacing: '0.15em',
                   fontFamily: "'Montserrat', sans-serif",
                 }}
