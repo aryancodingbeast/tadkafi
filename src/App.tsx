@@ -15,12 +15,9 @@ import { OrdersPage } from './pages/orders';
 import { SupabaseProvider } from './lib/supabase-context';
 import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './lib/cart-context';
-<<<<<<< HEAD
 import ContactUs from './pages/ContactUs';
 import TermsAndConditions from './pages/TermsAndConditions';
 import CancellationAndRefundPolicy from './pages/CancellationAndRefundPolicy';
-=======
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore();
@@ -145,12 +142,9 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-<<<<<<< HEAD
               <Route path="/contact-us" element={<ContactUs />} />
               <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
               <Route path="/cancellation-and-refund-policy" element={<CancellationAndRefundPolicy />} />
-=======
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
             </Routes>
             <Toaster position="bottom-right" />
           </div>
