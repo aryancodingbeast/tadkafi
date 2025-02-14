@@ -1,9 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-<<<<<<< HEAD
-import { LogIn, Menu, X } from 'lucide-react';
-=======
-import { LogIn, Menu, Store, X, Bell, ShoppingBag } from 'lucide-react';
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
+import { LogIn, Menu, X, Store, Bell, ShoppingBag } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { Button } from '../ui/button';
 import { useState } from 'react';
@@ -99,11 +95,7 @@ export function Navbar() {
   const isRestaurant = profile?.type === 'restaurant';
 
   return (
-<<<<<<< HEAD
     <nav
-=======
-    <nav 
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
       className="shadow-md relative"
       style={{
         background: `url(${navBg}) center/cover no-repeat`,
@@ -114,11 +106,7 @@ export function Navbar() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
-<<<<<<< HEAD
               <span
-=======
-              <span 
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                 className="text-2xl font-semibold tracking-wider transition-all duration-300 hover:opacity-90 hover:scale-105"
                 style={{
                   color: 'white',
@@ -133,7 +121,6 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
-<<<<<<< HEAD
             <Link to="/terms-and-conditions">
               <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB]">
                 Terms & Conditions
@@ -152,33 +139,19 @@ export function Navbar() {
             {user ? (
               <>
                 <Link to="/dashboard">
-                  <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB]">
-=======
-            {user ? (
-              <>
-                <Link to="/dashboard">
                   <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                     Dashboard
                   </Button>
                 </Link>
                 {isRestaurant && (
                   <>
                     <Link to="/products">
-<<<<<<< HEAD
-                      <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                       <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                         Products
                       </Button>
                     </Link>
                     <Link to="/orders">
-<<<<<<< HEAD
-                      <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB] relative">
-=======
                       <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB] relative">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                         Orders
                         {unpaidOrdersCount > 0 && (
                           <span className="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
@@ -192,11 +165,7 @@ export function Navbar() {
                 )}
                 {profile?.type === 'supplier' && (
                   <Link to="/supplier/notifications">
-<<<<<<< HEAD
-                    <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                     <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                       Notifications
                       {notificationCount > 0 && (
                         <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
@@ -206,13 +175,8 @@ export function Navbar() {
                     </Button>
                   </Link>
                 )}
-<<<<<<< HEAD
                 <Button
-                  variant="outline"
-=======
-                <Button 
-                  variant="ghost" 
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
+                  variant="ghost"
                   onClick={handleSignOut}
                   className="text-white hover:text-white hover:bg-[#98BFDB]"
                 >
@@ -221,11 +185,7 @@ export function Navbar() {
               </>
             ) : (
               <Link to="/login">
-<<<<<<< HEAD
-                <Button variant="outline" className="text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                 <Button variant="ghost" className="text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                   <LogIn className="h-5 w-5 mr-2" />
                   Sign In
                 </Button>
@@ -250,11 +210,7 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-<<<<<<< HEAD
         <div
-=======
-        <div 
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
           className="md:hidden"
           style={{
             background: `url(${navBg}) center/cover no-repeat`,
@@ -263,7 +219,6 @@ export function Navbar() {
           }}
         >
           <div className="px-2 pt-2 pb-3 space-y-1">
-<<<<<<< HEAD
             <Link to="/terms-and-conditions">
               <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
                 Terms & Conditions
@@ -282,33 +237,19 @@ export function Navbar() {
             {user ? (
               <>
                 <Link to="/dashboard">
-                  <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
-=======
-            {user ? (
-              <>
-                <Link to="/dashboard">
                   <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                     Dashboard
                   </Button>
                 </Link>
                 {isRestaurant && (
                   <>
                     <Link to="/products">
-<<<<<<< HEAD
-                      <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                       <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                         Products
                       </Button>
                     </Link>
                     <Link to="/orders">
-<<<<<<< HEAD
-                      <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB] relative">
-=======
                       <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB] relative">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                         Orders
                         {unpaidOrdersCount > 0 && (
                           <span className="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full">
@@ -321,11 +262,7 @@ export function Navbar() {
                 )}
                 {profile?.type === 'supplier' && (
                   <Link to="/supplier/notifications">
-<<<<<<< HEAD
-                    <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                     <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                       Notifications
                       {notificationCount > 0 && (
                         <span className="ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
@@ -335,13 +272,8 @@ export function Navbar() {
                     </Button>
                   </Link>
                 )}
-<<<<<<< HEAD
                 <Button
-                  variant="outline"
-=======
-                <Button 
-                  variant="ghost" 
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
+                  variant="ghost"
                   onClick={handleSignOut}
                   className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]"
                 >
@@ -350,11 +282,7 @@ export function Navbar() {
               </>
             ) : (
               <Link to="/login">
-<<<<<<< HEAD
-                <Button variant="outline" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
-=======
                 <Button variant="ghost" className="w-full text-left text-white hover:text-white hover:bg-[#98BFDB]">
->>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
                   <LogIn className="h-5 w-5 mr-2" />
                   Sign In
                 </Button>
