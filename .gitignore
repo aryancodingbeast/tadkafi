@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dependencies
 /node_modules
 /.pnp
@@ -26,13 +27,45 @@ yarn-error.log*
 # Editor directories and files
 .idea
 .vscode
+=======
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+>>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
+<<<<<<< HEAD
 # Replit specific
 .replit
 replit.nix
 .config
+=======
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Local Netlify folder
+.netlify
+temp/
+>>>>>>> 8278297874bd931f956f05347a1c77c6a428ba29
